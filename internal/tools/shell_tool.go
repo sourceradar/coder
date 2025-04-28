@@ -1,19 +1,19 @@
 package tools
 
 import (
+	"fmt"
+	"github.com/recrsn/coder/internal/schema"
 	"os/exec"
 )
 
 // NewShellTool creates a tool to execute shell commands
-func NewShellTool() Tool[map[string]any, map[string]any] {
-	return Tool[map[string]any, map[string]any]{
+func NewShellTool() *Tool {
+	return &Tool{
 		Name:        "shell",
 		Description: "Execute shell commands",
-		Usage:       "shell --command=\"ls -la\"",
-		Example:     "shell --command=\"echo hello world\"",
-		InputSchema: Schema{
+		InputSchema: schema.Schema{
 			Type: "object",
-			Properties: map[string]Property{
+			Properties: map[string]schema.Property{
 				"command": {
 					Type:        "string",
 					Description: "The shell command to execute",
@@ -21,33 +21,15 @@ func NewShellTool() Tool[map[string]any, map[string]any] {
 			},
 			Required: []string{"command"},
 		},
-		OutputSchema: Schema{
-			Type: "object",
-			Properties: map[string]Property{
-				"stdout": {
-					Type:        "string",
-					Description: "Command standard output",
-				},
-				"stderr": {
-					Type:        "string",
-					Description: "Command standard error",
-				},
-				"exitCode": {
-					Type:        "integer",
-					Description: "Command exit code",
-				},
-			},
-			Required: []string{"stdout", "stderr", "exitCode"},
-		},
-		Execute: func(input map[string]any) (map[string]any, error) {
+		Execute: func(input map[string]any) (string, error) {
 			command := input["command"].(string)
 			cmd := exec.Command("sh", "-c", command)
-			
+
 			stdout, err := cmd.Output()
 			if err != nil {
 				var exitCode int
 				var stderr string
-				
+
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					exitCode = exitErr.ExitCode()
 					stderr = string(exitErr.Stderr)
@@ -55,19 +37,24 @@ func NewShellTool() Tool[map[string]any, map[string]any] {
 					exitCode = 1
 					stderr = err.Error()
 				}
-				
-				return map[string]any{
-					"stdout":   string(stdout),
-					"stderr":   stderr,
-					"exitCode": exitCode,
-				}, nil
+
+				result := "Command: " + command + "\n"
+				result += fmt.Sprintf("Exit Code: %d\n", exitCode)
+				if len(stdout) > 0 {
+					result += "\nStandard Output:\n" + string(stdout) + "\n"
+				}
+				if stderr != "" {
+					result += "\nStandard Error:\n" + stderr + "\n"
+				}
+				return result, nil
 			}
-			
-			return map[string]any{
-				"stdout":   string(stdout),
-				"stderr":   "",
-				"exitCode": 0,
-			}, nil
+
+			result := "Command: " + command + "\n"
+			result += "Exit Code: 0\n"
+			if len(stdout) > 0 {
+				result += "\nOutput:\n" + string(stdout) + "\n"
+			}
+			return result, nil
 		},
 	}
 }

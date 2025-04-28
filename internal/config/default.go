@@ -4,16 +4,13 @@ package config
 func DefaultConfig() Config {
 	return Config{
 		Provider: ProviderConfig{
-			Endpoint: "https://api.openai.com/v1/chat/completions",
+			Endpoint: "https://api.openai.com/v1",
 			APIKey:   "",
 			Model:    "gpt-4o",
 		},
 		UI: UIConfig{
 			ColorEnabled: true,
 			ShowSpinner:  true,
-		},
-		Prompt: PromptConfig{
-			TemplateFile: "default.go.tmpl",
 		},
 	}
 }

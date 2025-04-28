@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/recrsn/coder/internal/chat"
-	config2 "github.com/recrsn/coder/internal/config"
+	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/tools"
 	"github.com/recrsn/coder/internal/ui"
 	"os"
@@ -11,11 +11,11 @@ import (
 
 func main() {
 	// Load configuration
-	cfg, err := config2.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		fmt.Println("Using default configuration")
-		cfg = config2.DefaultConfig()
+		cfg = config.DefaultConfig()
 	}
 
 	// Create a registry with all tools
@@ -27,9 +27,17 @@ func main() {
 	registry.Register("glob", tools.NewGlobTool())
 	registry.Register("sed", tools.NewSedTool())
 	registry.Register("grep", tools.NewGrepTool())
+	registry.Register("write", tools.NewWriteTool())
+	registry.Register("search_replace", tools.NewSearchReplaceTool())
+	registry.Register("tree", tools.NewTreeTool())
+	registry.Register("outline", tools.NewOutlineTool())
 
 	// Create UI
-	userInterface := ui.NewUI(cfg.UI)
+	userInterface, err := ui.NewUI(cfg.UI)
+	if err != nil {
+		fmt.Printf("Error creating UI: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Create and start chat session
 	session, err := chat.NewSession(userInterface, cfg, registry)

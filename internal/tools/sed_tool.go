@@ -1,21 +1,21 @@
 package tools
 
 import (
+	"fmt"
+	"github.com/recrsn/coder/internal/schema"
 	"os"
 	"regexp"
 	"strings"
 )
 
 // NewSedTool creates a tool to perform string replacement in files
-func NewSedTool() Tool[map[string]any, map[string]any] {
-	return Tool[map[string]any, map[string]any]{
+func NewSedTool() *Tool {
+	return &Tool{
 		Name:        "sed",
 		Description: "Replace text in files",
-		Usage:       "sed --file=\"file.txt\" --pattern=\"hello\" --replacement=\"world\"",
-		Example:     "sed --file=\"config.json\" --pattern=\"localhost\" --replacement=\"127.0.0.1\"",
-		InputSchema: Schema{
+		InputSchema: schema.Schema{
 			Type: "object",
-			Properties: map[string]Property{
+			Properties: map[string]schema.Property{
 				"file": {
 					Type:        "string",
 					Description: "The file to modify",
@@ -35,21 +35,7 @@ func NewSedTool() Tool[map[string]any, map[string]any] {
 			},
 			Required: []string{"file", "pattern", "replacement"},
 		},
-		OutputSchema: Schema{
-			Type: "object",
-			Properties: map[string]Property{
-				"replacements": {
-					Type:        "integer",
-					Description: "Number of replacements made",
-				},
-				"content": {
-					Type:        "string",
-					Description: "New file content",
-				},
-			},
-			Required: []string{"replacements", "content"},
-		},
-		Execute: func(input map[string]any) (map[string]any, error) {
+		Execute: func(input map[string]any) (string, error) {
 			file := input["file"].(string)
 			pattern := input["pattern"].(string)
 			replacement := input["replacement"].(string)
@@ -57,24 +43,24 @@ func NewSedTool() Tool[map[string]any, map[string]any] {
 			if !ok {
 				useRegex = false
 			}
-			
+
 			content, err := os.ReadFile(file)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
-			
+
 			var newContent string
 			var count int
-			
+
 			if useRegex {
 				regex, err := regexp.Compile(pattern)
 				if err != nil {
-					return nil, err
+					return "", err
 				}
-				
+
 				newContentBytes := regex.ReplaceAll(content, []byte(replacement))
 				newContent = string(newContentBytes)
-				
+
 				// Count replacements
 				count = strings.Count(string(content), pattern) - strings.Count(newContent, pattern)
 			} else {
@@ -82,16 +68,13 @@ func NewSedTool() Tool[map[string]any, map[string]any] {
 				newContent = strings.ReplaceAll(string(content), pattern, replacement)
 				count = strings.Count(string(content), pattern)
 			}
-			
+
 			err = os.WriteFile(file, []byte(newContent), 0644)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
-			
-			return map[string]any{
-				"replacements": count,
-				"content":      newContent,
-			}, nil
+
+			return fmt.Sprintf("Made %d replacements in %s", count, file), nil
 		},
 	}
 }

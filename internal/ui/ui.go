@@ -3,32 +3,55 @@ package ui
 import (
 	"fmt"
 	"github.com/recrsn/coder/internal/config"
+	"os"
 	"strings"
 
+	"github.com/chzyer/readline"
 	"github.com/pterm/pterm"
 )
 
 // UI handles the terminal user interface
 type UI struct {
-	config config.UIConfig
+	config   config.UIConfig
+	readline *readline.Instance
 }
 
 // NewUI creates a new UI instance
-func NewUI(cfg config.UIConfig) *UI {
+func NewUI(cfg config.UIConfig) (*UI, error) {
 	// Configure PTerm based on config
 	if !cfg.ColorEnabled {
 		pterm.DisableColor()
 	}
 
-	return &UI{
-		config: cfg,
+	instance, err := readline.New("> ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create readline instance: %v", err)
 	}
+	return &UI{
+		config:   cfg,
+		readline: instance,
+	}, nil
 }
 
 // ShowHeader displays the application header
 func (u *UI) ShowHeader() {
 	header := pterm.DefaultHeader.WithBackgroundStyle(pterm.NewStyle(pterm.BgBlue)).WithMargin(10)
 	header.Println("Coder - Your Programming Sidekick")
+
+	// Show info about API logging
+	configDir, _ := getConfigDir()
+	if configDir != "" {
+		pterm.Info.Println("API requests and responses are being logged to: " + configDir + "/api_logs.jsonl")
+	}
+}
+
+// getConfigDir gets the config directory path
+func getConfigDir() (string, error) {
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		return "/tmp/coder", nil // Fallback
+	}
+	return userConfigDir + "/coder", nil
 }
 
 // StartSpinner starts a spinner with the given text
@@ -80,7 +103,7 @@ func (u *UI) PrintCodeBlock(code, language string) {
 }
 
 // PrintToolCall prints information about a tool call
-func (u *UI) PrintToolCall(toolName string, args map[string]any, result map[string]any, err error) {
+func (u *UI) PrintToolCall(toolName string, args map[string]any, result string, err error) {
 	panel := pterm.DefaultBox.WithTitle("Tool: " + toolName)
 
 	var content strings.Builder
@@ -94,12 +117,9 @@ func (u *UI) PrintToolCall(toolName string, args map[string]any, result map[stri
 	// Print error if any
 	if err != nil {
 		content.WriteString("\nError: " + err.Error() + "\n")
-	} else if result != nil {
-		// Print result
-		content.WriteString("\nResult:\n")
-		for k, v := range result {
-			content.WriteString(fmt.Sprintf("  %s: %v\n", k, v))
-		}
+	} else if result != "" {
+		// Print result as text
+		content.WriteString("\nResult:\n" + result + "\n")
 	}
 
 	panel.Println(content.String())
@@ -118,7 +138,10 @@ func (u *UI) PrintHelp() {
 		{"/version", "Show version information"},
 	}
 
-	pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+	err := pterm.DefaultTable.WithHasHeader().WithData(table).Render()
+	if err != nil {
+		return
+	}
 }
 
 // PrintError prints an error message
@@ -133,7 +156,14 @@ func (u *UI) PrintSuccess(message string) {
 
 // AskInput asks for user input with a prompt
 func (u *UI) AskInput(prompt string) string {
-	text, _ := pterm.DefaultInteractiveTextInput.WithMultiLine(false).Show(prompt)
+	u.readline.SetPrompt(prompt)
+	defer u.readline.SetPrompt("> ")
+
+	text, err := u.readline.Readline()
+	if err != nil {
+		pterm.Error.Println("Error reading input:", err)
+		return ""
+	}
 	return text
 }
 

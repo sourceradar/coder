@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	defaultBaseURL = "https://api.openai.com/v1"
 	defaultTimeout = 30 * time.Second
 )
 
@@ -23,9 +22,9 @@ type OpenAIClient struct {
 }
 
 // NewClient creates a new OpenAI API client
-func NewClient(apiKey string) *OpenAIClient {
+func NewClient(baseURL, apiKey string) *OpenAIClient {
 	return &OpenAIClient{
-		baseURL: defaultBaseURL,
+		baseURL: baseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
@@ -35,8 +34,10 @@ func NewClient(apiKey string) *OpenAIClient {
 
 // Message represents a message in a conversation
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // FunctionCall represents a function call by the model
@@ -76,10 +77,9 @@ type ToolCall struct {
 
 // ChatCompletionChoice represents a completion choice
 type ChatCompletionChoice struct {
-	Index        int        `json:"index"`
-	Message      Message    `json:"message"`
-	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason string     `json:"finish_reason"`
+	Index        int     `json:"index"`
+	Message      Message `json:"message"`
+	FinishReason string  `json:"finish_reason"`
 }
 
 // ChatCompletionResponse is the response structure for chat completions
@@ -114,7 +114,12 @@ func (c *OpenAIClient) CreateChatCompletion(req ChatCompletionRequest) (*ChatCom
 	if err != nil {
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Printf("Error closing response body: %v\n", err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

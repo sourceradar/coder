@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"fmt"
+	"github.com/recrsn/coder/internal/schema"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,15 +11,13 @@ import (
 )
 
 // NewGrepTool creates a tool to search for patterns in files
-func NewGrepTool() Tool[map[string]any, map[string]any] {
-	return Tool[map[string]any, map[string]any]{
+func NewGrepTool() *Tool {
+	return &Tool{
 		Name:        "grep",
 		Description: "Search for patterns in files",
-		Usage:       "grep --pattern=\"func\" --paths=\"[\"file1.go\", \"file2.go\"]\"",
-		Example:     "grep --pattern=\"error\" --paths=\"[\"main.go\"]\" --recursive=true",
-		InputSchema: Schema{
+		InputSchema: schema.Schema{
 			Type: "object",
-			Properties: map[string]Property{
+			Properties: map[string]schema.Property{
 				"pattern": {
 					Type:        "string",
 					Description: "The regex pattern to search for",
@@ -25,7 +25,7 @@ func NewGrepTool() Tool[map[string]any, map[string]any] {
 				"paths": {
 					Type:        "array",
 					Description: "Paths to search in",
-					Items: &PropertyItems{
+					Items: &schema.Schema{
 						Type: "string",
 					},
 				},
@@ -36,62 +36,49 @@ func NewGrepTool() Tool[map[string]any, map[string]any] {
 			},
 			Required: []string{"pattern", "paths"},
 		},
-		OutputSchema: Schema{
-			Type: "object",
-			Properties: map[string]Property{
-				"matches": {
-					Type:        "array",
-					Description: "List of matches with file, line number and content",
-					Items: &PropertyItems{
-						Type: "object",
-					},
-				},
-			},
-			Required: []string{"matches"},
-		},
-		Execute: func(input map[string]any) (map[string]any, error) {
+		Execute: func(input map[string]any) (string, error) {
 			pattern := input["pattern"].(string)
 			pathsAny := input["paths"].([]interface{})
 			recursive, ok := input["recursive"].(bool)
 			if !ok {
 				recursive = false
 			}
-			
+
 			paths := make([]string, len(pathsAny))
 			for i, p := range pathsAny {
 				paths[i] = p.(string)
 			}
-			
+
 			regex, err := regexp.Compile(pattern)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
-			
+
 			var matches []map[string]interface{}
-			
+
 			for _, path := range paths {
 				fileInfo, err := os.Stat(path)
 				if err != nil {
 					continue
 				}
-				
+
 				if fileInfo.IsDir() {
 					if recursive {
 						err := filepath.Walk(path, func(filePath string, info fs.FileInfo, err error) error {
 							if err != nil {
 								return err
 							}
-							
+
 							if !info.IsDir() {
 								fileMatches := searchFile(filePath, regex)
 								matches = append(matches, fileMatches...)
 							}
-							
+
 							return nil
 						})
-						
+
 						if err != nil {
-							return nil, err
+							return "", err
 						}
 					}
 				} else {
@@ -99,10 +86,19 @@ func NewGrepTool() Tool[map[string]any, map[string]any] {
 					matches = append(matches, fileMatches...)
 				}
 			}
-			
-			return map[string]any{
-				"matches": matches,
-			}, nil
+
+			// Format the result as readable text
+			result := fmt.Sprintf("Found %d matches for pattern '%s':\n\n", len(matches), pattern)
+
+			for _, match := range matches {
+				file := match["file"].(string)
+				line := match["line"].(int)
+				content := match["content"].(string)
+
+				result += fmt.Sprintf("%s:%d: %s\n", file, line, content)
+			}
+
+			return result, nil
 		},
 	}
 }
@@ -113,10 +109,10 @@ func searchFile(filePath string, regex *regexp.Regexp) []map[string]interface{} 
 	if err != nil {
 		return nil
 	}
-	
+
 	lines := strings.Split(string(content), "\n")
 	var matches []map[string]interface{}
-	
+
 	for i, line := range lines {
 		if regex.MatchString(line) {
 			matches = append(matches, map[string]interface{}{
@@ -126,6 +122,6 @@ func searchFile(filePath string, regex *regexp.Regexp) []map[string]interface{} 
 			})
 		}
 	}
-	
+
 	return matches
 }

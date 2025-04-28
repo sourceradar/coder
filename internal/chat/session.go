@@ -1,13 +1,16 @@
 package chat
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/llm"
+	"github.com/recrsn/coder/internal/logger"
 	"github.com/recrsn/coder/internal/prompts"
-	tools2 "github.com/recrsn/coder/internal/tools"
+	"github.com/recrsn/coder/internal/tools"
 	"github.com/recrsn/coder/internal/ui"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -16,35 +19,25 @@ import (
 type Session struct {
 	ui            *ui.UI
 	config        config.Config
-	registry      *tools2.Registry
+	registry      *tools.Registry
 	messages      []llm.Message
 	client        *llm.OpenAIClient
 	promptManager *prompts.Manager
+	history       []string
+	historyFile   string
+	apiLogger     *logger.APILogger
 }
 
 // NewSession creates a new chat session
-func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools2.Registry) (*Session, error) {
-	dataDir, err := config.GetDataDir()
-	if err != nil {
-		return nil, fmt.Errorf("getting data directory: %w", err)
-	}
-
-	// Create prompts directory
-	promptsDir := filepath.Join(dataDir, "prompts")
-
-	// Initialize prompt manager
-	promptManager := prompts.NewManager(promptsDir)
-
-	// Ensure default prompt exists
-	if err := promptManager.EnsureDefaultPromptExists(); err != nil {
-		return nil, fmt.Errorf("ensuring default prompt: %w", err)
-	}
+func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry) (*Session, error) {
+	// Initialize prompt manager (no directory needed)
+	promptManager := prompts.NewManager("")
 
 	// Create OpenAI client
-	client := llm.NewClient(cfg.Provider.APIKey)
+	client := llm.NewClient(cfg.Provider.Endpoint, cfg.Provider.APIKey)
 
 	// Load and render system prompt
-	systemPrompt, err := getSystemPrompt(promptManager, cfg, registry)
+	systemPrompt, err := getSystemPrompt(promptManager, registry)
 	if err != nil {
 		return nil, fmt.Errorf("getting system prompt: %w", err)
 	}
@@ -57,6 +50,22 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools2.Regist
 		},
 	}
 
+	// Set up history file in config directory
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		userConfigDir = "/tmp" // Fallback
+	}
+	configDir := filepath.Join(userConfigDir, "coder")
+	historyFile := filepath.Join(configDir, "history")
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Printf("Warning: couldn't create config directory: %v\n", err)
+	}
+
+	// Initialize API logger
+	apiLogger := logger.NewAPILogger(configDir)
+
 	return &Session{
 		ui:            userInterface,
 		config:        cfg,
@@ -64,6 +73,9 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools2.Regist
 		messages:      messages,
 		client:        client,
 		promptManager: promptManager,
+		history:       []string{},
+		historyFile:   historyFile,
+		apiLogger:     apiLogger,
 	}, nil
 }
 
@@ -72,8 +84,11 @@ func (s *Session) Start() error {
 	s.ui.ShowHeader()
 	s.ui.PrintSuccess("Welcome to Coder! Type your programming questions or /help for commands.")
 
+	// Load history from file
+	s.loadHistory()
+
 	for {
-		// Get user input
+		// Get user input with history support
 		userInput := s.ui.AskInput("> ")
 		userInput = strings.TrimSpace(userInput)
 
@@ -95,11 +110,17 @@ func (s *Session) Start() error {
 		// Display user message
 		s.ui.PrintUserMessage(userInput)
 
-		// Add user message to history
+		// Add user message to messages list
 		s.messages = append(s.messages, llm.Message{
 			Role:    "user",
 			Content: userInput,
 		})
+
+		// Add input to command history
+		s.addToHistory(userInput)
+
+		// Save history to file
+		s.saveHistory()
 
 		// Process user message
 		if err := s.processUserMessage(); err != nil {
@@ -141,12 +162,8 @@ func (s *Session) handleCommand(cmd string) error {
 	case "/tools":
 		// List available tools
 		fmt.Println("Available tools:")
-		for _, name := range s.registry.ListTools() {
-			if toolInterface, ok := s.registry.Get(name); ok {
-				if tool, ok := toolInterface.(tools2.Tool[map[string]any, map[string]any]); ok {
-					fmt.Printf("- %s: %s\n", name, tool.Description)
-				}
-			}
+		for _, tool := range s.registry.ListTools() {
+			fmt.Printf("- %s: %s\n", tool.Function.Name, tool.Function.Description)
 		}
 		return nil
 	case "/version":
@@ -169,10 +186,14 @@ func (s *Session) handleConfigCommand(subCommand string) error {
 	value := parts[1]
 
 	switch key {
+	case "provider.endpoint":
+		s.config.Provider.Endpoint = value
+		// Update client with new endpoint
+		s.client = llm.NewClient(value, s.config.Provider.APIKey)
 	case "provider.api_key":
 		s.config.Provider.APIKey = value
 		// Update client with new API key
-		s.client = llm.NewClient(value)
+		s.client = llm.NewClient(s.config.Provider.Endpoint, value)
 	case "provider.model":
 		s.config.Provider.Model = value
 	case "provider.temperature":
@@ -200,19 +221,7 @@ func (s *Session) handleConfigCommand(subCommand string) error {
 			return fmt.Errorf("invalid boolean value: %s, use true or false", value)
 		}
 		s.config.UI.ShowSpinner = enabled
-	case "prompt.template_file":
-		s.config.Prompt.TemplateFile = value
-
-		// Update system message with new prompt
-		systemPrompt, err := getSystemPrompt(s.promptManager, s.config, s.registry)
-		if err != nil {
-			return fmt.Errorf("updating system prompt: %w", err)
-		}
-
-		// Update first message in history (system message)
-		if len(s.messages) > 0 && s.messages[0].Role == "system" {
-			s.messages[0].Content = systemPrompt
-		}
+	// Prompt template file option is no longer needed with simplified implementation
 	default:
 		return fmt.Errorf("unknown config key: %s", key)
 	}
@@ -228,38 +237,101 @@ func (s *Session) handleConfigCommand(subCommand string) error {
 
 // processUserMessage processes a user message and gets a response
 func (s *Session) processUserMessage() error {
-	// Start spinner
-	spinner := s.ui.StartSpinner("Thinking...")
+	// Start the conversation flow, which will handle all tool calls
+	// and yield the final response only when the conversation is complete
+	return s.continueConversation()
+}
 
-	// Define available tools based on registry
-	var tools []llm.Tool
+// handleToolCalls processes tool calls from the LLM
+func (s *Session) handleToolCalls(toolCalls []llm.ToolCall) error {
+	for _, toolCall := range toolCalls {
+		toolName := toolCall.Function.Name
+		toolArgs := toolCall.Function.Arguments
 
-	for _, name := range s.registry.ListTools() {
-		if toolInterface, ok := s.registry.Get(name); ok {
-			if tool, ok := toolInterface.(tools.Tool[map[string]any, map[string]any]); ok {
-				// Convert tool schema to parameter schema
-				params := convertSchemaToJsonSchema(tool.InputSchema)
-				tools = append(tools, llm.Tool{
-					Type: "function",
-					Function: llm.FunctionDefinition{
-						Name:        name,
-						Description: tool.Description,
-						Parameters:  params,
-					},
-				})
-			}
+		// Parse tool arguments
+		var args map[string]any
+		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
+			s.ui.PrintError(fmt.Sprintf("Failed to parse tool args: %v", err))
+
+			// Add tool response to messages
+			toolResponse := fmt.Sprintf("Error parsing arguments for %s: %s", toolName, err.Error())
+			s.messages = append(s.messages, llm.Message{
+				Role:       "tool",
+				Content:    toolResponse,
+				ToolCallID: toolCall.ID,
+			})
+			continue
+		}
+
+		// Get the tool
+		tool, ok := s.registry.Get(toolName)
+		if !ok {
+			s.ui.PrintError(fmt.Sprintf("Tool not found: %s", toolName))
+
+			// Add tool response to messages
+			toolResponse := fmt.Sprintf("Tool not found: %s", toolName)
+			s.messages = append(s.messages, llm.Message{
+				Role:       "tool",
+				Content:    toolResponse,
+				ToolCallID: toolCall.ID,
+			})
+			continue
+		}
+
+		// Execute the tool
+		fmt.Printf("Executing tool: %s\n", toolName)
+
+		// Execute the tool
+		result, err := tool.Run(args)
+
+		// Print result or error
+		if err != nil {
+			s.ui.PrintToolCall(toolName, args, "", err)
+
+			// Add tool response to messages
+			toolResponse := fmt.Sprintf("Error executing %s: %s", toolName, err.Error())
+			s.messages = append(s.messages, llm.Message{
+				Role:       "tool",
+				Content:    toolResponse,
+				ToolCallID: toolCall.ID,
+			})
+		} else {
+			s.ui.PrintToolCall(toolName, args, result, nil)
+
+			// Result is already a formatted string, use directly
+			s.messages = append(s.messages, llm.Message{
+				Role:       "tool",
+				Content:    result,
+				ToolCallID: toolCall.ID,
+			})
 		}
 	}
 
-	// Create chat completion request
+	// Continue the conversation to get the next response
+	return s.continueConversation()
+}
+
+// continueConversation continues the conversation with the LLM
+// It sends the current messages to the LLM and processes the response
+// If the response contains tool calls, it handles them recursively
+// Only when the finish reason is "stop", it returns the final response
+func (s *Session) continueConversation() error {
+	// Start spinner
+	spinner := s.ui.StartSpinner("Processing...")
+
+	// Create chat completion request with tools
 	req := llm.ChatCompletionRequest{
 		Model:    s.config.Provider.Model,
 		Messages: s.messages,
-		Tools:    tools,
+		Tools:    s.registry.ListTools(),
 	}
 
 	// Send request to OpenAI
 	resp, err := s.client.CreateChatCompletion(req)
+
+	// Log the API interaction
+	s.apiLogger.LogInteraction(req, resp, err)
+
 	if err != nil {
 		s.ui.StopSpinnerFail(spinner, "Failed to get response")
 		return fmt.Errorf("calling API: %w", err)
@@ -280,162 +352,28 @@ func (s *Session) processUserMessage() error {
 	s.ui.StopSpinner(spinner, "Response received")
 
 	// Handle response based on finish reason
-	if choice.FinishReason == "tool_calls" && len(choice.ToolCalls) > 0 {
+	if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
 		// Handle tool calls
-		return s.handleToolCalls(choice.ToolCalls)
+		return s.handleToolCalls(choice.Message.ToolCalls)
+	} else if choice.FinishReason == "stop" {
+		// Print assistant message for the final response
+		if choice.Message.Content != "" {
+			s.ui.PrintAssistantMessage(choice.Message.Content)
+		}
+		return nil
 	} else {
-		// Print assistant message
-		s.ui.PrintAssistantMessage(choice.Message.Content)
-	}
-
-	return nil
-}
-
-// handleToolCalls processes tool calls from the LLM
-func (s *Session) handleToolCalls(toolCalls []llm.ToolCall) error {
-	for _, toolCall := range toolCalls {
-		toolName := toolCall.Function.Name
-		toolArgs := toolCall.Function.Arguments
-
-		// Parse tool arguments
-		var args map[string]any
-		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
-			s.ui.PrintError(fmt.Sprintf("Failed to parse tool args: %v", err))
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Error parsing arguments for %s: %s", toolName, err.Error())
-			s.messages = append(s.messages, llm.Message{
-				Role:    "tool",
-				Content: toolResponse,
-			})
-			continue
+		// Print assistant message for other finish reasons
+		if choice.Message.Content != "" {
+			s.ui.PrintAssistantMessage(choice.Message.Content)
 		}
-
-		// Get the tool
-		toolInterface, ok := s.registry.Get(toolName)
-		if !ok {
-			s.ui.PrintError(fmt.Sprintf("Tool not found: %s", toolName))
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Tool not found: %s", toolName)
-			s.messages = append(s.messages, llm.Message{
-				Role:    "tool",
-				Content: toolResponse,
-			})
-			continue
-		}
-
-		// Execute the tool
-		if tool, ok := toolInterface.(tools2.Tool[map[string]any, map[string]any]); ok {
-			fmt.Printf("Executing tool: %s\n", toolName)
-
-			// Execute the tool
-			result, err := tool.Run(args)
-
-			// Print result or error
-			if err != nil {
-				s.ui.PrintToolCall(toolName, args, nil, err)
-
-				// Add tool response to messages
-				toolResponse := fmt.Sprintf("Error executing %s: %s", toolName, err.Error())
-				s.messages = append(s.messages, llm.Message{
-					Role:    "tool",
-					Content: toolResponse,
-				})
-			} else {
-				s.ui.PrintToolCall(toolName, args, result, nil)
-
-				// Convert result to string for tool response
-				resultJSON, _ := json.Marshal(result)
-				s.messages = append(s.messages, llm.Message{
-					Role:    "tool",
-					Content: string(resultJSON),
-				})
-			}
-		} else {
-			s.ui.PrintError(fmt.Sprintf("Invalid tool type for: %s", toolName))
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Invalid tool type for: %s", toolName)
-			s.messages = append(s.messages, llm.Message{
-				Role:    "tool",
-				Content: toolResponse,
-			})
-		}
-	}
-
-	// Get follow-up response
-	return s.processFollowUp()
-}
-
-// processFollowUp gets a follow-up response after tool calls
-func (s *Session) processFollowUp() error {
-	// Start spinner
-	spinner := s.ui.StartSpinner("Processing tool results...")
-
-	// Create chat completion request without tools
-	req := llm.ChatCompletionRequest{
-		Model:    s.config.Provider.Model,
-		Messages: s.messages,
-	}
-
-	// Send request to OpenAI
-	resp, err := s.client.CreateChatCompletion(req)
-	if err != nil {
-		s.ui.StopSpinnerFail(spinner, "Failed to get follow-up response")
-		return fmt.Errorf("calling API: %w", err)
-	}
-
-	// Handle the response
-	if len(resp.Choices) == 0 {
-		s.ui.StopSpinnerFail(spinner, "No follow-up response received")
-		return fmt.Errorf("no response choices")
-	}
-
-	choice := resp.Choices[0]
-
-	// Add assistant message to history
-	s.messages = append(s.messages, choice.Message)
-
-	// Stop spinner
-	s.ui.StopSpinner(spinner, "Follow-up response received")
-
-	// Print assistant message
-	s.ui.PrintAssistantMessage(choice.Message.Content)
-
-	// Check if there are more tool calls
-	if choice.FinishReason == "tool_calls" && len(choice.ToolCalls) > 0 {
-		return s.handleToolCalls(choice.ToolCalls)
-	}
-
-	return nil
-}
-
-// convertSchemaToJsonSchema converts our schema to JSON Schema format
-func convertSchemaToJsonSchema(schema tools2.Schema) map[string]any {
-	properties := make(map[string]any)
-	for name, prop := range schema.Properties {
-		propSchema := map[string]any{
-			"type":        prop.Type,
-			"description": prop.Description,
-		}
-		properties[name] = propSchema
-	}
-
-	return map[string]any{
-		"type":       "object",
-		"properties": properties,
-		"required":   schema.Required,
+		return nil
 	}
 }
 
 // getSystemPrompt loads and renders the system prompt
-func getSystemPrompt(promptManager *prompts.Manager, cfg config.Config, registry *tools2.Registry) (string, error) {
-	// Load template content
-	templateContent, err := promptManager.LoadPrompt(cfg.Prompt.TemplateFile)
-	if err != nil {
-		return "", fmt.Errorf("loading prompt template: %w", err)
-	}
+func getSystemPrompt(promptManager *prompts.Manager, registry *tools.Registry) (string, error) {
+	// Get default prompt template
+	templateContent, _ := promptManager.LoadPrompt("")
 
 	// Get tools data for prompt
 	toolsList := prompts.GetToolsForPrompt(registry)
@@ -447,4 +385,66 @@ func getSystemPrompt(promptManager *prompts.Manager, cfg config.Config, registry
 	}
 
 	return promptManager.RenderPrompt(templateContent, promptData)
+}
+
+// loadHistory loads command history from the history file
+func (s *Session) loadHistory() {
+	// Check if file exists
+	if _, err := os.Stat(s.historyFile); os.IsNotExist(err) {
+		return
+	}
+
+	// Open file
+	file, err := os.Open(s.historyFile)
+	if err != nil {
+		fmt.Printf("Warning: couldn't open history file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	// Read line by line
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			s.history = append(s.history, line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Warning: error reading history file: %v\n", err)
+	}
+}
+
+// saveHistory saves command history to the history file
+func (s *Session) saveHistory() {
+	// Create or truncate file
+	file, err := os.Create(s.historyFile)
+	if err != nil {
+		fmt.Printf("Warning: couldn't create history file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	// Write each history item on a new line
+	writer := bufio.NewWriter(file)
+	for _, cmd := range s.history {
+		_, _ = writer.WriteString(cmd + "\n")
+	}
+
+	_ = writer.Flush()
+}
+
+// addToHistory adds a command to the history, avoiding duplicates
+func (s *Session) addToHistory(cmd string) {
+	// Don't add empty commands or duplicates of the most recent command
+	if cmd == "" || (len(s.history) > 0 && s.history[len(s.history)-1] == cmd) {
+		return
+	}
+
+	// Add to history, limiting to 1000 items
+	s.history = append(s.history, cmd)
+	if len(s.history) > 1000 {
+		s.history = s.history[len(s.history)-1000:]
+	}
 }
