@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/recrsn/coder/internal/config"
@@ -26,6 +27,8 @@ type Session struct {
 	history       []string
 	historyFile   string
 	apiLogger     *logger.APILogger
+	// For cancellation
+	cancelFunc context.CancelFunc
 }
 
 // NewSession creates a new chat session
@@ -102,6 +105,9 @@ func (s *Session) Start() error {
 				if err.Error() == "exit" {
 					return nil
 				}
+				if err.Error() == "interrupt" {
+					continue
+				}
 				s.ui.PrintError(fmt.Sprintf("Error executing command: %v", err))
 			}
 			continue
@@ -141,6 +147,15 @@ func (s *Session) handleCommand(cmd string) error {
 	case "/exit":
 		s.ui.PrintSuccess("Goodbye!")
 		return fmt.Errorf("exit")
+	case "/interrupt":
+		// Cancel any ongoing operations
+		if s.cancelFunc != nil {
+			s.cancelFunc()
+			s.ui.PrintSuccess("Interrupted current operation")
+		} else {
+			s.ui.PrintSuccess("No operation to interrupt")
+		}
+		return fmt.Errorf("interrupt")
 	case "/clear":
 		s.ui.ClearScreen()
 		return nil
@@ -237,14 +252,33 @@ func (s *Session) handleConfigCommand(subCommand string) error {
 
 // processUserMessage processes a user message and gets a response
 func (s *Session) processUserMessage() error {
+	// Create a new context that can be cancelled
+	ctx, cancel := context.WithCancel(context.Background())
+	
+	// Store the cancel function so it can be called if the user interrupts
+	s.cancelFunc = cancel
+	
 	// Start the conversation flow, which will handle all tool calls
 	// and yield the final response only when the conversation is complete
-	return s.continueConversation()
+	err := s.continueConversation(ctx)
+	
+	// Clear the cancel function when done
+	s.cancelFunc = nil
+	
+	return err
 }
 
 // handleToolCalls processes tool calls from the LLM
-func (s *Session) handleToolCalls(toolCalls []llm.ToolCall) error {
+func (s *Session) handleToolCalls(ctx context.Context, toolCalls []llm.ToolCall) error {
 	for _, toolCall := range toolCalls {
+		// Check if the context has been cancelled
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("tool execution interrupted")
+		default:
+			// Continue processing
+		}
+		
 		toolName := toolCall.Function.Name
 		toolArgs := toolCall.Function.Arguments
 
@@ -308,14 +342,22 @@ func (s *Session) handleToolCalls(toolCalls []llm.ToolCall) error {
 	}
 
 	// Continue the conversation to get the next response
-	return s.continueConversation()
+	return s.continueConversation(ctx)
 }
 
 // continueConversation continues the conversation with the LLM
 // It sends the current messages to the LLM and processes the response
 // If the response contains tool calls, it handles them recursively
 // Only when the finish reason is "stop", it returns the final response
-func (s *Session) continueConversation() error {
+func (s *Session) continueConversation(ctx context.Context) error {
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("operation interrupted")
+	default:
+		// Continue processing
+	}
+
 	// Start spinner
 	spinner := s.ui.StartSpinner("Processing...")
 
@@ -326,15 +368,20 @@ func (s *Session) continueConversation() error {
 		Tools:    s.registry.ListTools(),
 	}
 
-	// Send request to OpenAI
-	resp, err := s.client.CreateChatCompletion(req)
+	// Send request to OpenAI with context for cancellation
+	resp, apiErr := s.client.CreateChatCompletionWithContext(ctx, req)
 
 	// Log the API interaction
-	s.apiLogger.LogInteraction(req, resp, err)
+	s.apiLogger.LogInteraction(req, resp, apiErr)
 
-	if err != nil {
+	if apiErr != nil {
+		// Check if the error was due to context cancellation
+		if ctx.Err() != nil {
+			s.ui.StopSpinnerFail(spinner, "Operation interrupted")
+			return fmt.Errorf("operation interrupted")
+		}
 		s.ui.StopSpinnerFail(spinner, "Failed to get response")
-		return fmt.Errorf("calling API: %w", err)
+		return fmt.Errorf("calling API: %w", apiErr)
 	}
 
 	// Handle the response
@@ -354,7 +401,7 @@ func (s *Session) continueConversation() error {
 	// Handle response based on finish reason
 	if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
 		// Handle tool calls
-		return s.handleToolCalls(choice.Message.ToolCalls)
+		return s.handleToolCalls(ctx, choice.Message.ToolCalls)
 	} else if choice.FinishReason == "stop" {
 		// Print assistant message for the final response
 		if choice.Message.Content != "" {
@@ -447,4 +494,16 @@ func (s *Session) addToHistory(cmd string) {
 	if len(s.history) > 1000 {
 		s.history = s.history[len(s.history)-1000:]
 	}
+}
+
+// Exit gracefully exits the session
+func (s *Session) Exit() {
+	// Cancel any ongoing operations
+	if s.cancelFunc != nil {
+		s.cancelFunc()
+	}
+	
+	s.ui.PrintSuccess("Goodbye!")
+	s.saveHistory()
+	os.Exit(0)
 }

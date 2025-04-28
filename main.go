@@ -32,15 +32,23 @@ func main() {
 	registry.Register("tree", tools.NewTreeTool())
 	registry.Register("outline", tools.NewOutlineTool())
 
-	// Create UI
-	userInterface, err := ui.NewUI(cfg.UI)
+	var session *chat.Session
+	
+	// Create UI with exit handler
+	userInterface, err := ui.NewUI(cfg.UI, func() {
+		if session != nil {
+			session.Exit()
+		} else {
+			os.Exit(0)
+		}
+	})
 	if err != nil {
 		fmt.Printf("Error creating UI: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create and start chat session
-	session, err := chat.NewSession(userInterface, cfg, registry)
+	session, err = chat.NewSession(userInterface, cfg, registry)
 	if err != nil {
 		fmt.Printf("Error creating chat session: %v\n", err)
 		os.Exit(1)

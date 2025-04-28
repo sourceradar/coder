@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -97,12 +98,19 @@ type ChatCompletionResponse struct {
 
 // CreateChatCompletion creates a chat completion
 func (c *OpenAIClient) CreateChatCompletion(req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+	// Call the context-aware version with a background context
+	return c.CreateChatCompletionWithContext(context.Background(), req)
+}
+
+// CreateChatCompletionWithContext creates a chat completion with context for cancellation
+func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	reqBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", c.baseURL+"/chat/completions", bytes.NewBuffer(reqBody))
+	// Create the request with the provided context
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -112,6 +120,10 @@ func (c *OpenAIClient) CreateChatCompletion(req ChatCompletionRequest) (*ChatCom
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		// Check if the error was caused by context cancellation
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+		}
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
 	defer func(Body io.ReadCloser) {

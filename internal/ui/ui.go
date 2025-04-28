@@ -2,22 +2,26 @@ package ui
 
 import (
 	"fmt"
-	"github.com/recrsn/coder/internal/config"
+	"io"
 	"os"
 	"strings"
 
+	"github.com/recrsn/coder/internal/config"
+
+	md "github.com/MichaelMure/go-term-markdown"
 	"github.com/chzyer/readline"
 	"github.com/pterm/pterm"
 )
 
 // UI handles the terminal user interface
 type UI struct {
-	config   config.UIConfig
-	readline *readline.Instance
+	config      config.UIConfig
+	readline    *readline.Instance
+	exitHandler func()
 }
 
 // NewUI creates a new UI instance
-func NewUI(cfg config.UIConfig) (*UI, error) {
+func NewUI(cfg config.UIConfig, exitHandler func()) (*UI, error) {
 	// Configure PTerm based on config
 	if !cfg.ColorEnabled {
 		pterm.DisableColor()
@@ -28,8 +32,9 @@ func NewUI(cfg config.UIConfig) (*UI, error) {
 		return nil, fmt.Errorf("failed to create readline instance: %v", err)
 	}
 	return &UI{
-		config:   cfg,
-		readline: instance,
+		config:      cfg,
+		readline:    instance,
+		exitHandler: exitHandler,
 	}, nil
 }
 
@@ -90,12 +95,18 @@ func (u *UI) PrintUserMessage(message string) {
 	pterm.FgGreen.Println("You: " + message)
 }
 
-// PrintAssistantMessage prints an assistant message
-func (u *UI) PrintAssistantMessage(message string) {
-	pterm.FgBlue.Println("Coder: " + message)
+// parseMarkdown processes basic markdown formatting
+func parseMarkdown(text string) string {
+	return string(md.Render(text, 80, 0))
 }
 
-// PrintCodeBlock prints a code block
+// PrintAssistantMessage prints an assistant message with markdown formatting
+func (u *UI) PrintAssistantMessage(message string) {
+	fmt.Print("Coder: ")
+	fmt.Println(parseMarkdown(message))
+}
+
+// PrintCodeBlock prints a code block with a highlighted box
 func (u *UI) PrintCodeBlock(code, language string) {
 	fmt.Println()
 	pterm.DefaultBox.WithTitle(language).Println(code)
@@ -136,6 +147,8 @@ func (u *UI) PrintHelp() {
 		{"/tools", "List available tools"},
 		{"/prompt", "Edit the prompt template"},
 		{"/version", "Show version information"},
+		{"Ctrl+C", "Interrupt current operation"},
+		{"Ctrl+D", "Exit the application"},
 	}
 
 	err := pterm.DefaultTable.WithHasHeader().WithData(table).Render()
@@ -161,6 +174,15 @@ func (u *UI) AskInput(prompt string) string {
 
 	text, err := u.readline.Readline()
 	if err != nil {
+		if err == io.EOF && u.exitHandler != nil {
+			fmt.Println("exit")
+			u.exitHandler()
+			return "/exit"
+		}
+		if err == readline.ErrInterrupt {
+			fmt.Println("^C")
+			return "/interrupt"
+		}
 		pterm.Error.Println("Error reading input:", err)
 		return ""
 	}
