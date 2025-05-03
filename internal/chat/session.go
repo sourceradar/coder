@@ -18,29 +18,28 @@ import (
 
 // Session represents a chat session
 type Session struct {
-	ui            *ui.UI
-	config        config.Config
-	registry      *tools.Registry
-	messages      []llm.Message
-	client        *llm.OpenAIClient
-	promptManager *prompts.Manager
-	history       []string
-	historyFile   string
-	apiLogger     *logger.APILogger
+	ui          *ui.UI
+	config      config.Config
+	registry    *tools.Registry
+	messages    []llm.Message
+	client      *llm.OpenAIClient
+	history     []string
+	historyFile string
+	apiLogger   *logger.APILogger
 	// For cancellation
 	cancelFunc context.CancelFunc
+	// Stores the most recent summary of conversation
+	conversationSummary string
 }
 
 // NewSession creates a new chat session
 func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry) (*Session, error) {
-	// Initialize prompt manager (no directory needed)
-	promptManager := prompts.NewManager("")
 
 	// Create OpenAI client
 	client := llm.NewClient(cfg.Provider.Endpoint, cfg.Provider.APIKey)
 
 	// Load and render system prompt
-	systemPrompt, err := getSystemPrompt(promptManager, registry)
+	systemPrompt, err := getSystemPrompt(registry)
 	if err != nil {
 		return nil, fmt.Errorf("getting system prompt: %w", err)
 	}
@@ -70,15 +69,15 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registr
 	apiLogger := logger.NewAPILogger(configDir)
 
 	return &Session{
-		ui:            userInterface,
-		config:        cfg,
-		registry:      registry,
-		messages:      messages,
-		client:        client,
-		promptManager: promptManager,
-		history:       []string{},
-		historyFile:   historyFile,
-		apiLogger:     apiLogger,
+		ui:                  userInterface,
+		config:              cfg,
+		registry:            registry,
+		messages:            messages,
+		client:              client,
+		history:             []string{},
+		historyFile:         historyFile,
+		apiLogger:           apiLogger,
+		conversationSummary: "",
 	}, nil
 }
 
@@ -158,6 +157,13 @@ func (s *Session) handleCommand(cmd string) error {
 		return fmt.Errorf("interrupt")
 	case "/clear":
 		s.ui.ClearScreen()
+		return nil
+	case "/summarize":
+		// Summarize previous messages and add to context
+		if err := s.AddSummaryToContext(); err != nil {
+			return fmt.Errorf("summarizing messages: %w", err)
+		}
+		s.ui.PrintSuccess("Conversation summarized and added to context")
 		return nil
 	case "/config":
 		// Show config command
@@ -254,17 +260,17 @@ func (s *Session) handleConfigCommand(subCommand string) error {
 func (s *Session) processUserMessage() error {
 	// Create a new context that can be cancelled
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Store the cancel function so it can be called if the user interrupts
 	s.cancelFunc = cancel
-	
+
 	// Start the conversation flow, which will handle all tool calls
 	// and yield the final response only when the conversation is complete
 	err := s.continueConversation(ctx)
-	
+
 	// Clear the cancel function when done
 	s.cancelFunc = nil
-	
+
 	return err
 }
 
@@ -278,7 +284,7 @@ func (s *Session) handleToolCalls(ctx context.Context, toolCalls []llm.ToolCall)
 		default:
 			// Continue processing
 		}
-		
+
 		toolName := toolCall.Function.Name
 		toolArgs := toolCall.Function.Arguments
 
@@ -418,20 +424,15 @@ func (s *Session) continueConversation(ctx context.Context) error {
 }
 
 // getSystemPrompt loads and renders the system prompt
-func getSystemPrompt(promptManager *prompts.Manager, registry *tools.Registry) (string, error) {
-	// Get default prompt template
-	templateContent, _ := promptManager.LoadPrompt("")
+func getSystemPrompt(registry *tools.Registry) (string, error) {
+	toolsList := registry.GetAll()
 
-	// Get tools data for prompt
-	toolsList := prompts.GetToolsForPrompt(registry)
-
-	// Render template
 	promptData := prompts.PromptData{
 		KnowsTools: len(toolsList) > 0,
 		Tools:      toolsList,
 	}
 
-	return promptManager.RenderPrompt(templateContent, promptData)
+	return prompts.RenderSystemPrompt(promptData)
 }
 
 // loadHistory loads command history from the history file
@@ -502,8 +503,28 @@ func (s *Session) Exit() {
 	if s.cancelFunc != nil {
 		s.cancelFunc()
 	}
-	
+
 	s.ui.PrintSuccess("Goodbye!")
 	s.saveHistory()
 	os.Exit(0)
+}
+
+// GetConversationSummary returns the current conversation summary
+// If no summary exists or it's outdated, it generates a new one
+func (s *Session) GetConversationSummary() (string, error) {
+	// If we already have a summary, return it
+	if s.conversationSummary != "" {
+		return s.conversationSummary, nil
+	}
+
+	// Otherwise, generate a new summary
+	return s.SummarizeMessages()
+}
+
+// max returns the larger of x or y
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
 }

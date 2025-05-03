@@ -123,7 +123,7 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 						}
 					}
 				}
-				
+
 				// Get documentation comment if present
 				doc := findDocComment(node, content, "go")
 				docText := ""
@@ -135,9 +135,9 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 				}
 
 				// Store method definition for later output with the appropriate type
-				methodText := fmt.Sprintf("%s%sfunc %s %s%s%s {\n%s\t// ...\n%s}\n\n", 
+				methodText := fmt.Sprintf("%s%sfunc %s %s%s%s {\n%s\t// ...\n%s}\n\n",
 					docText, indent, receiverText, name, paramText, resultText, indent, indent)
-					
+
 				if receiverType != "" {
 					methodsByType[receiverType] = append(methodsByType[receiverType], methodText)
 				} else {
@@ -180,7 +180,7 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 						if typeNode.Kind() == "struct_type" {
 							// For struct types
 							result.WriteString(fmt.Sprintf("%stype %s struct {\n", indent, name))
-							
+
 							// Parse struct fields
 							if typeNode.NamedChildCount() > 0 {
 								fieldsNode := typeNode.NamedChild(0)
@@ -190,11 +190,11 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 										if fieldNode.Kind() == "field_declaration" {
 											fieldNameNode := fieldNode.ChildByFieldName("name")
 											fieldTypeNode := fieldNode.ChildByFieldName("type")
-											
+
 											if fieldNameNode != nil && fieldTypeNode != nil {
 												fieldName := getNodeText(fieldNameNode, content)
 												fieldType := getNodeText(fieldTypeNode, content)
-												
+
 												// Check if field is public
 												fieldIsPublic := len(fieldName) > 0 && fieldName[0] >= 'A' && fieldName[0] <= 'Z'
 												if fieldIsPublic {
@@ -205,9 +205,9 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 									}
 								}
 							}
-							
+
 							result.WriteString(fmt.Sprintf("%s}\n\n", indent))
-							
+
 							// Add methods for this type if any
 							if methods, ok := methodsByType[name]; ok {
 								for _, method := range methods {
@@ -217,7 +217,7 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 						} else if typeNode.Kind() == "interface_type" {
 							// For interface types
 							result.WriteString(fmt.Sprintf("%stype %s interface {\n", indent, name))
-							
+
 							// Parse interface methods
 							if typeNode.NamedChildCount() > 0 {
 								methodsNode := typeNode.NamedChild(0)
@@ -228,31 +228,31 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 											methodNameNode := methodNode.ChildByFieldName("name")
 											methodParamsNode := methodNode.ChildByFieldName("parameters")
 											methodResultNode := methodNode.ChildByFieldName("result")
-											
+
 											if methodNameNode != nil {
 												methodName := getNodeText(methodNameNode, content)
 												methodParams := ""
 												if methodParamsNode != nil {
 													methodParams = getNodeText(methodParamsNode, content)
 												}
-												
+
 												methodResult := ""
 												if methodResultNode != nil {
 													methodResult = " " + getNodeText(methodResultNode, content)
 												}
-												
+
 												result.WriteString(fmt.Sprintf("%s\t%s%s%s\n", indent, methodName, methodParams, methodResult))
 											}
 										}
 									}
 								}
 							}
-							
+
 							result.WriteString(fmt.Sprintf("%s}\n\n", indent))
 						} else {
 							// For simple type aliases
 							result.WriteString(fmt.Sprintf("%stype %s %s\n\n", indent, name, typeText))
-							
+
 							// Add methods for this type if any
 							if methods, ok := methodsByType[name]; ok {
 								for _, method := range methods {
@@ -271,7 +271,7 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 			if isConst {
 				declType = "const"
 			}
-			
+
 			// Get documentation comment if present
 			doc := findDocComment(node, content, "go")
 			if doc != "" {
@@ -280,9 +280,9 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 					result.WriteString(fmt.Sprintf("%s// %s\n", indent, strings.TrimSpace(line)))
 				}
 			}
-			
+
 			result.WriteString(fmt.Sprintf("%s%s (\n", indent, declType))
-			
+
 			hasPublicItems := false
 			for i := 0; i < int(node.NamedChildCount()); i++ {
 				child := node.NamedChild(uint(i))
@@ -290,33 +290,33 @@ func extractGoOutline(root *tree_sitter.Node, content []byte) string {
 					nameNode := child.ChildByFieldName("name")
 					if nameNode != nil {
 						name := getNodeText(nameNode, content)
-						
+
 						// Check if public (uppercase first letter in Go)
 						isPublic := len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z'
 						if !isPublic {
 							continue
 						}
-						
+
 						hasPublicItems = true
-						
+
 						typeNode := child.ChildByFieldName("type")
 						valueNode := child.ChildByFieldName("value")
-						
+
 						typeText := ""
 						if typeNode != nil {
 							typeText = " " + getNodeText(typeNode, content)
 						}
-						
+
 						valueText := ""
 						if valueNode != nil {
 							valueText = " = " + getNodeText(valueNode, content)
 						}
-						
+
 						result.WriteString(fmt.Sprintf("%s\t%s%s%s\n", indent, name, typeText, valueText))
 					}
 				}
 			}
-			
+
 			// Only output constants/variables block if it has public items
 			if hasPublicItems {
 				result.WriteString(fmt.Sprintf("%s)\n\n", indent))

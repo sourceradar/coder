@@ -36,7 +36,7 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Get parameters
 				paramNode := node.ChildByFieldName("parameters")
 				paramText := ""
@@ -63,12 +63,12 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Skip private methods (those starting with #)
 				if strings.HasPrefix(name, "#") {
 					return
 				}
-				
+
 				// Get parameters
 				paramNode := node.ChildByFieldName("parameters")
 				paramText := ""
@@ -110,7 +110,7 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Get extends clause if any
 				extendsNode := node.ChildByFieldName("superclass")
 				extendsText := ""
@@ -129,7 +129,7 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 
 				// Write class declaration
 				result.WriteString(fmt.Sprintf("%sclass %s%s {\n", indent, name, extendsText))
-				
+
 				// Process class body
 				bodyNode := node.ChildByFieldName("body")
 				if bodyNode != nil {
@@ -138,7 +138,7 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 						processNode(child, indentLevel+1)
 					}
 				}
-				
+
 				result.WriteString(fmt.Sprintf("%s}\n\n", indent))
 			}
 
@@ -157,10 +157,10 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 					if declarator.Kind() == "variable_declarator" && declarator.NamedChildCount() >= 2 {
 						nameNode := declarator.NamedChild(0)
 						valueNode := declarator.NamedChild(1)
-						
+
 						if valueNode.Kind() == "arrow_function" || valueNode.Kind() == "function" {
 							name := getNodeText(nameNode, content)
-							
+
 							// Get declaration type
 							declType := "var"
 							if node.Kind() == "lexical_declaration" {
@@ -170,14 +170,14 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 									declType = "const"
 								}
 							}
-							
+
 							// Get parameters
 							paramNode := valueNode.ChildByFieldName("parameters")
 							paramText := ""
 							if paramNode != nil {
 								paramText = getNodeText(paramNode, content)
 							}
-							
+
 							// Get documentation comment if present
 							doc := findDocComment(node, content, "javascript")
 							if doc != "" {
@@ -186,7 +186,7 @@ func extractJSOutline(root *sitter.Node, content []byte) string {
 									result.WriteString(fmt.Sprintf("%s// %s\n", indent, strings.TrimSpace(line)))
 								}
 							}
-							
+
 							// Write function
 							if valueNode.Kind() == "arrow_function" {
 								result.WriteString(fmt.Sprintf("%s%s %s = %s => {\n", indent, declType, name, paramText))

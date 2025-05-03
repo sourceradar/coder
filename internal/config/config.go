@@ -30,18 +30,18 @@ type UIConfig struct {
 // LoadConfig loads the configuration from file
 func LoadConfig() (Config, error) {
 	config := DefaultConfig()
-	
+
 	// Setup viper to look for config files
 	viper.SetConfigName(".coder")
 	viper.SetConfigType("yaml")
-	
+
 	// Add search paths: current directory and home directory
 	viper.AddConfigPath(".")
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		viper.AddConfigPath(homeDir)
 	}
-	
+
 	viper.AutomaticEnv()
 
 	// Read config (will use first found file)
@@ -66,9 +66,9 @@ func SaveConfig(config Config) error {
 	if err != nil {
 		return fmt.Errorf("getting home dir: %w", err)
 	}
-	
+
 	configPath := filepath.Join(homeDir, ".coder.yaml")
-	
+
 	// Set config values
 	viper.SetConfigFile(configPath)
 

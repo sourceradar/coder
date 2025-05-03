@@ -30,7 +30,7 @@ func extractPythonOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// In Python, names starting with _ are considered private
 				isPublic := !strings.HasPrefix(name, "_")
 				if !isPublic {
@@ -80,7 +80,7 @@ func extractPythonOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// In Python, names starting with _ are considered private
 				isPublic := !strings.HasPrefix(name, "_")
 				if !isPublic {
@@ -121,28 +121,28 @@ func extractPythonOutline(root *sitter.Node, content []byte) string {
 							methodNameNode := child.ChildByFieldName("name")
 							if methodNameNode != nil {
 								methodName := getNodeText(methodNameNode, content)
-								
+
 								// Skip private methods
 								if strings.HasPrefix(methodName, "_") {
 									continue
 								}
-								
+
 								hasMethods = true
-								
+
 								// Get parameters
 								paramNode := child.ChildByFieldName("parameters")
 								paramText := ""
 								if paramNode != nil {
 									paramText = getNodeText(paramNode, content)
 								}
-								
+
 								// Get return type
 								returnNode := child.ChildByFieldName("return_type")
 								returnText := ""
 								if returnNode != nil {
 									returnText = " -> " + getNodeText(returnNode, content)
 								}
-								
+
 								// Get docstring
 								methodDoc := ""
 								methodBodyNode := child.ChildByFieldName("body")
@@ -156,7 +156,7 @@ func extractPythonOutline(root *sitter.Node, content []byte) string {
 										}
 									}
 								}
-								
+
 								// Write method definition
 								result.WriteString(fmt.Sprintf("%s    def %s%s%s:", indent, methodName, paramText, returnText))
 								if methodDoc != "" {
@@ -168,7 +168,7 @@ func extractPythonOutline(root *sitter.Node, content []byte) string {
 						}
 					}
 				}
-				
+
 				// If no methods were found, add 'pass'
 				if !hasMethods {
 					result.WriteString(fmt.Sprintf("%s    pass\n\n", indent))

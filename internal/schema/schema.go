@@ -2,9 +2,6 @@ package schema
 
 import "fmt"
 
-// JSONSchemaDraft2020_12 is the URI for the JSON Schema draft 2020-12
-const JSONSchemaDraft2020_12 = "https://json-schema.org/draft/2020-12/schema"
-
 // Schema represents a minimal subset of JSON Schema Draft 2020-12
 type Schema struct {
 	Type                 string              `json:"type"`
@@ -15,13 +12,13 @@ type Schema struct {
 }
 
 type Property struct {
-	Type                 string        `json:"type,omitempty"`
-	Description          string        `json:"description,omitempty"`
-	Items                *Schema       `json:"items,omitempty"`
-	Format               string        `json:"format,omitempty"`
-	Enum                 []interface{} `json:"enum,omitempty"`
-	AdditionalProperties any           `json:"additionalProperties,omitempty"`
-	Required             []string      `json:"required,omitempty"`
+	Type                 string              `json:"type,omitempty"`
+	Description          string              `json:"description,omitempty"`
+	Items                *Schema             `json:"items,omitempty"`
+	Format               string              `json:"format,omitempty"`
+	Enum                 []interface{}       `json:"enum,omitempty"`
+	AdditionalProperties any                 `json:"additionalProperties,omitempty"`
+	Required             []string            `json:"required,omitempty"`
 	Properties           map[string]Property `json:"properties,omitempty"`
 }
 
@@ -37,7 +34,7 @@ func (s Schema) Validate(input map[string]interface{}) error {
 	for fieldName, value := range input {
 		// Check if field is defined in properties
 		property, ok := s.Properties[fieldName]
-		
+
 		// Handle additionalProperties
 		if !ok {
 			if s.AdditionalProperties == false {
@@ -101,12 +98,4 @@ func (s Schema) Validate(input map[string]interface{}) error {
 	}
 
 	return nil
-}
-
-// NewSchema creates a new Schema with the latest JSON Schema draft
-func NewSchema(schemaType string) *Schema {
-	return &Schema{
-		Type:      schemaType,
-		SchemaURI: JSONSchemaDraft2020_12,
-	}
 }

@@ -37,14 +37,14 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Get parameters
 				paramNode := node.ChildByFieldName("parameters")
 				paramText := ""
 				if paramNode != nil {
 					paramText = getNodeText(paramNode, content)
 				}
-				
+
 				// Get return type if any
 				returnNode := node.ChildByFieldName("return_type")
 				returnText := ""
@@ -71,19 +71,19 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Skip private methods (those starting with #)
 				if strings.HasPrefix(name, "#") {
 					return
 				}
-				
+
 				// Get parameters
 				paramNode := node.ChildByFieldName("parameters")
 				paramText := ""
 				if paramNode != nil {
 					paramText = getNodeText(paramNode, content)
 				}
-				
+
 				// Get return type if any
 				returnNode := node.ChildByFieldName("return_type")
 				returnText := ""
@@ -125,14 +125,14 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Get extends clause if any
 				extendsNode := node.ChildByFieldName("superclass")
 				extendsText := ""
 				if extendsNode != nil {
 					extendsText = " extends " + getNodeText(extendsNode, content)
 				}
-				
+
 				// Get implements clause if any
 				implementsNode := node.ChildByFieldName("implements_clause")
 				implementsText := ""
@@ -151,7 +151,7 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 
 				// Write class declaration
 				result.WriteString(fmt.Sprintf("%sclass %s%s%s {\n", indent, name, extendsText, implementsText))
-				
+
 				// Process class body
 				bodyNode := node.ChildByFieldName("body")
 				if bodyNode != nil {
@@ -160,16 +160,16 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 						processNode(child, indentLevel+1)
 					}
 				}
-				
+
 				result.WriteString(fmt.Sprintf("%s}\n\n", indent))
 			}
-			
+
 		case "interface_declaration":
 			// For TypeScript interfaces
 			nameNode := node.ChildByFieldName("name")
 			if nameNode != nil {
 				name := getNodeText(nameNode, content)
-				
+
 				// Get extends clause if any
 				extendsNode := node.ChildByFieldName("extends_clause")
 				extendsText := ""
@@ -188,21 +188,21 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 
 				// Write interface declaration
 				result.WriteString(fmt.Sprintf("%sinterface %s%s {\n", indent, name, extendsText))
-				
+
 				// Process interface body for property and method signatures
 				bodyNode := node.ChildByFieldName("body")
 				if bodyNode != nil {
 					for i := 0; i < int(bodyNode.NamedChildCount()); i++ {
 						child := bodyNode.NamedChild(uint(i))
-						
+
 						if child.Kind() == "property_signature" {
 							nameNode := child.ChildByFieldName("name")
 							typeNode := child.ChildByFieldName("type")
-							
+
 							if nameNode != nil && typeNode != nil {
 								propName := getNodeText(nameNode, content)
 								propType := getNodeText(typeNode, content)
-								
+
 								// Check for optional marker
 								optional := ""
 								for j := 0; j < int(child.ChildCount()); j++ {
@@ -211,45 +211,45 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 										break
 									}
 								}
-								
+
 								// Get doc comment
 								propDoc := findDocComment(child, content, "typescript")
 								if propDoc != "" {
 									result.WriteString(fmt.Sprintf("%s  // %s\n", indent, propDoc))
 								}
-								
+
 								result.WriteString(fmt.Sprintf("%s  %s%s: %s;\n", indent, propName, optional, propType))
 							}
 						} else if child.Kind() == "method_signature" {
 							nameNode := child.ChildByFieldName("name")
 							paramNode := child.ChildByFieldName("parameters")
 							returnNode := child.ChildByFieldName("return_type")
-							
+
 							if nameNode != nil {
 								methodName := getNodeText(nameNode, content)
-								
+
 								paramText := ""
 								if paramNode != nil {
 									paramText = getNodeText(paramNode, content)
 								}
-								
+
 								returnText := ""
 								if returnNode != nil {
 									returnText = ": " + getNodeText(returnNode, content)
 								}
-								
+
 								// Get doc comment
 								methodDoc := findDocComment(child, content, "typescript")
 								if methodDoc != "" {
 									result.WriteString(fmt.Sprintf("%s  // %s\n", indent, methodDoc))
 								}
-								
+
 								result.WriteString(fmt.Sprintf("%s  %s%s%s;\n", indent, methodName, paramText, returnText))
 							}
 						}
 					}
 				}
-				
+
 				result.WriteString(fmt.Sprintf("%s}\n\n", indent))
 			}
 
@@ -268,10 +268,10 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 					if declarator.Kind() == "variable_declarator" && declarator.NamedChildCount() >= 2 {
 						nameNode := declarator.NamedChild(0)
 						valueNode := declarator.NamedChild(1)
-						
+
 						if valueNode.Kind() == "arrow_function" || valueNode.Kind() == "function" {
 							name := getNodeText(nameNode, content)
-							
+
 							// Get declaration type
 							declType := "var"
 							if node.Kind() == "lexical_declaration" {
@@ -281,21 +281,21 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 									declType = "const"
 								}
 							}
-							
+
 							// Get parameters
 							paramNode := valueNode.ChildByFieldName("parameters")
 							paramText := ""
 							if paramNode != nil {
 								paramText = getNodeText(paramNode, content)
 							}
-							
+
 							// Get return type if any
 							returnNode := valueNode.ChildByFieldName("return_type")
 							returnText := ""
 							if returnNode != nil {
 								returnText = ": " + getNodeText(returnNode, content)
 							}
-							
+
 							// Get documentation comment if present
 							doc := findDocComment(node, content, "typescript")
 							if doc != "" {
@@ -304,7 +304,7 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 									result.WriteString(fmt.Sprintf("%s// %s\n", indent, strings.TrimSpace(line)))
 								}
 							}
-							
+
 							// Write function
 							if valueNode.Kind() == "arrow_function" {
 								result.WriteString(fmt.Sprintf("%s%s %s = %s%s => {\n", indent, declType, name, paramText, returnText))
@@ -317,16 +317,16 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 					}
 				}
 			}
-			
+
 		case "type_alias_declaration":
 			// For TypeScript type aliases
 			nameNode := node.ChildByFieldName("name")
 			typeNode := node.ChildByFieldName("value")
-			
+
 			if nameNode != nil && typeNode != nil {
 				name := getNodeText(nameNode, content)
 				typeValue := getNodeText(typeNode, content)
-				
+
 				// Get documentation comment if present
 				doc := findDocComment(node, content, "typescript")
 				if doc != "" {
@@ -335,7 +335,7 @@ func extractTSOutline(root *sitter.Node, content []byte) string {
 						result.WriteString(fmt.Sprintf("%s// %s\n", indent, strings.TrimSpace(line)))
 					}
 				}
-				
+
 				result.WriteString(fmt.Sprintf("%stype %s = %s;\n\n", indent, name, typeValue))
 			}
 		}

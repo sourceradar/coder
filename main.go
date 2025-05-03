@@ -33,7 +33,7 @@ func main() {
 	registry.Register("outline", tools.NewOutlineTool())
 
 	var session *chat.Session
-	
+
 	// Create UI with exit handler
 	userInterface, err := ui.NewUI(cfg.UI, func() {
 		if session != nil {
