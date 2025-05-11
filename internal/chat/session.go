@@ -3,17 +3,17 @@ package chat
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/recrsn/coder/internal/chat/prompts"
 	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/llm"
-	"github.com/recrsn/coder/internal/logger"
-	"github.com/recrsn/coder/internal/prompts"
+	"github.com/recrsn/coder/internal/platform"
 	"github.com/recrsn/coder/internal/tools"
 	"github.com/recrsn/coder/internal/ui"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Session represents a chat session
@@ -21,11 +21,11 @@ type Session struct {
 	ui          *ui.UI
 	config      config.Config
 	registry    *tools.Registry
-	messages    []llm.Message
-	client      *llm.OpenAIClient
+	agent       *llm.Agent
+	client      *llm.Client
 	history     []string
 	historyFile string
-	apiLogger   *logger.APILogger
+	apiLogger   llm.APILogger
 	// For cancellation
 	cancelFunc context.CancelFunc
 	// Stores the most recent summary of conversation
@@ -34,24 +34,6 @@ type Session struct {
 
 // NewSession creates a new chat session
 func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry) (*Session, error) {
-
-	// Create OpenAI client
-	client := llm.NewClient(cfg.Provider.Endpoint, cfg.Provider.APIKey)
-
-	// Load and render system prompt
-	systemPrompt, err := getSystemPrompt(registry)
-	if err != nil {
-		return nil, fmt.Errorf("getting system prompt: %w", err)
-	}
-
-	// Initialize messages with system prompt
-	messages := []llm.Message{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-	}
-
 	// Set up history file in config directory
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
@@ -60,25 +42,51 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registr
 	configDir := filepath.Join(userConfigDir, "coder")
 	historyFile := filepath.Join(configDir, "history")
 
+	apiLogger := llm.NewAPILogger(configDir)
+
+	// Create OpenAI client
+	client := llm.NewClient(cfg.Provider.Endpoint, cfg.Provider.APIKey, apiLogger)
+
+	// Load and render system prompt
+	systemPrompt, err := getSystemPrompt(registry)
+	if err != nil {
+		return nil, fmt.Errorf("getting system prompt: %w", err)
+	}
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Warning: couldn't create config directory: %v\n", err)
 	}
 
 	// Initialize API logger
-	apiLogger := logger.NewAPILogger(configDir)
 
-	return &Session{
+	session := &Session{
 		ui:                  userInterface,
 		config:              cfg,
 		registry:            registry,
-		messages:            messages,
 		client:              client,
 		history:             []string{},
 		historyFile:         historyFile,
 		apiLogger:           apiLogger,
 		conversationSummary: "",
-	}, nil
+	}
+
+	agent := llm.NewAgent(
+		"Coder",
+		systemPrompt,
+		registry.ListTools(),
+		llm.ModelConfig{
+			Model:       cfg.Provider.Model,
+			Temperature: 0.6,
+		},
+		client,
+		session.handleToolCalls,
+		session.handleMessage,
+	)
+
+	session.agent = agent
+
+	return session, nil
 }
 
 // Start starts the chat session
@@ -115,19 +123,10 @@ func (s *Session) Start() error {
 		// Display user message
 		s.ui.PrintUserMessage(userInput)
 
-		// Add user message to messages list
-		s.messages = append(s.messages, llm.Message{
-			Role:    "user",
-			Content: userInput,
-		})
-
-		// Add input to command history
+		s.agent.AddMessage("user", userInput)
 		s.addToHistory(userInput)
-
-		// Save history to file
 		s.saveHistory()
 
-		// Process user message
 		if err := s.processUserMessage(); err != nil {
 			s.ui.PrintError(fmt.Sprintf("Error processing message: %v", err))
 		}
@@ -160,26 +159,13 @@ func (s *Session) handleCommand(cmd string) error {
 		return nil
 	case "/summarize":
 		// Summarize previous messages and add to context
-		if err := s.AddSummaryToContext(); err != nil {
+		summary, err := s.SummarizeMessages()
+		if err != nil {
 			return fmt.Errorf("summarizing messages: %w", err)
 		}
+		s.ui.PrintAssistantMessage(summary)
 		s.ui.PrintSuccess("Conversation summarized and added to context")
 		return nil
-	case "/config":
-		// Show config command
-		if len(parts) == 1 {
-			// Print current config
-			configJSON, err := json.MarshalIndent(s.config, "", "  ")
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(configJSON))
-			return nil
-		}
-
-		// Edit config command
-		subCommand := parts[1]
-		return s.handleConfigCommand(subCommand)
 	case "/tools":
 		// List available tools
 		fmt.Println("Available tools:")
@@ -195,67 +181,6 @@ func (s *Session) handleCommand(cmd string) error {
 	}
 }
 
-// handleConfigCommand handles config-related commands
-func (s *Session) handleConfigCommand(subCommand string) error {
-	// Parse key=value format
-	parts := strings.SplitN(subCommand, "=", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid config command format, use: /config key=value")
-	}
-
-	key := parts[0]
-	value := parts[1]
-
-	switch key {
-	case "provider.endpoint":
-		s.config.Provider.Endpoint = value
-		// Update client with new endpoint
-		s.client = llm.NewClient(value, s.config.Provider.APIKey)
-	case "provider.api_key":
-		s.config.Provider.APIKey = value
-		// Update client with new API key
-		s.client = llm.NewClient(s.config.Provider.Endpoint, value)
-	case "provider.model":
-		s.config.Provider.Model = value
-	case "provider.temperature":
-		var temp float64
-		if _, err := fmt.Sscanf(value, "%f", &temp); err != nil {
-			return fmt.Errorf("invalid temperature value: %s", value)
-		}
-	case "ui.color_enabled":
-		var enabled bool
-		if value == "true" {
-			enabled = true
-		} else if value == "false" {
-			enabled = false
-		} else {
-			return fmt.Errorf("invalid boolean value: %s, use true or false", value)
-		}
-		s.config.UI.ColorEnabled = enabled
-	case "ui.show_spinner":
-		var enabled bool
-		if value == "true" {
-			enabled = true
-		} else if value == "false" {
-			enabled = false
-		} else {
-			return fmt.Errorf("invalid boolean value: %s, use true or false", value)
-		}
-		s.config.UI.ShowSpinner = enabled
-	// Prompt template file option is no longer needed with simplified implementation
-	default:
-		return fmt.Errorf("unknown config key: %s", key)
-	}
-
-	// Save updated config
-	if err := config.SaveConfig(s.config); err != nil {
-		return fmt.Errorf("saving config: %w", err)
-	}
-
-	s.ui.PrintSuccess(fmt.Sprintf("Config updated: %s = %s", key, value))
-	return nil
-}
-
 // processUserMessage processes a user message and gets a response
 func (s *Session) processUserMessage() error {
 	// Create a new context that can be cancelled
@@ -266,7 +191,11 @@ func (s *Session) processUserMessage() error {
 
 	// Start the conversation flow, which will handle all tool calls
 	// and yield the final response only when the conversation is complete
-	err := s.continueConversation(ctx)
+	_, err := s.agent.Run(ctx)
+
+	if err != nil {
+		s.ui.PrintError(fmt.Sprintf("Error processing message: %v", err))
+	}
 
 	// Clear the cancel function when done
 	s.cancelFunc = nil
@@ -275,151 +204,34 @@ func (s *Session) processUserMessage() error {
 }
 
 // handleToolCalls processes tool calls from the LLM
-func (s *Session) handleToolCalls(ctx context.Context, toolCalls []llm.ToolCall) error {
-	for _, toolCall := range toolCalls {
-		// Check if the context has been cancelled
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("tool execution interrupted")
-		default:
-			// Continue processing
-		}
-
-		toolName := toolCall.Function.Name
-		toolArgs := toolCall.Function.Arguments
-
-		// Parse tool arguments
-		var args map[string]any
-		if err := json.Unmarshal([]byte(toolArgs), &args); err != nil {
-			s.ui.PrintError(fmt.Sprintf("Failed to parse tool args: %v", err))
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Error parsing arguments for %s: %s", toolName, err.Error())
-			s.messages = append(s.messages, llm.Message{
-				Role:       "tool",
-				Content:    toolResponse,
-				ToolCallID: toolCall.ID,
-			})
-			continue
-		}
-
-		// Get the tool
-		tool, ok := s.registry.Get(toolName)
-		if !ok {
-			s.ui.PrintError(fmt.Sprintf("Tool not found: %s", toolName))
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Tool not found: %s", toolName)
-			s.messages = append(s.messages, llm.Message{
-				Role:       "tool",
-				Content:    toolResponse,
-				ToolCallID: toolCall.ID,
-			})
-			continue
-		}
-
-		// Execute the tool
-		fmt.Printf("Executing tool: %s\n", toolName)
-
-		// Execute the tool
-		result, err := tool.Run(args)
-
-		// Print result or error
-		if err != nil {
-			s.ui.PrintToolCall(toolName, args, "", err)
-
-			// Add tool response to messages
-			toolResponse := fmt.Sprintf("Error executing %s: %s", toolName, err.Error())
-			s.messages = append(s.messages, llm.Message{
-				Role:       "tool",
-				Content:    toolResponse,
-				ToolCallID: toolCall.ID,
-			})
-		} else {
-			s.ui.PrintToolCall(toolName, args, result, nil)
-
-			// Result is already a formatted string, use directly
-			s.messages = append(s.messages, llm.Message{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: toolCall.ID,
-			})
-		}
-	}
-
-	// Continue the conversation to get the next response
-	return s.continueConversation(ctx)
-}
-
-// continueConversation continues the conversation with the LLM
-// It sends the current messages to the LLM and processes the response
-// If the response contains tool calls, it handles them recursively
-// Only when the finish reason is "stop", it returns the final response
-func (s *Session) continueConversation(ctx context.Context) error {
-	// Check if context is already cancelled
+func (s *Session) handleToolCalls(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("operation interrupted")
+		return "", fmt.Errorf("tool execution interrupted")
 	default:
 		// Continue processing
 	}
 
-	// Start spinner
-	spinner := s.ui.StartSpinner("Processing...")
-
-	// Create chat completion request with tools
-	req := llm.ChatCompletionRequest{
-		Model:    s.config.Provider.Model,
-		Messages: s.messages,
-		Tools:    s.registry.ListTools(),
+	tool, ok := s.registry.Get(toolName)
+	if !ok {
+		errorMsg := fmt.Sprintf("Tool not found: %s", toolName)
+		s.ui.PrintError(errorMsg)
+		return errorMsg, nil
 	}
 
-	// Send request to OpenAI with context for cancellation
-	resp, apiErr := s.client.CreateChatCompletionWithContext(ctx, req)
+	// Execute the tool
+	fmt.Printf("Executing tool: %s\n", toolName)
 
-	// Log the API interaction
-	s.apiLogger.LogInteraction(req, resp, apiErr)
+	// Execute the tool
+	result, err := tool.Run(args)
 
-	if apiErr != nil {
-		// Check if the error was due to context cancellation
-		if ctx.Err() != nil {
-			s.ui.StopSpinnerFail(spinner, "Operation interrupted")
-			return fmt.Errorf("operation interrupted")
-		}
-		s.ui.StopSpinnerFail(spinner, "Failed to get response")
-		return fmt.Errorf("calling API: %w", apiErr)
-	}
-
-	// Handle the response
-	if len(resp.Choices) == 0 {
-		s.ui.StopSpinnerFail(spinner, "No response received")
-		return fmt.Errorf("no response choices")
-	}
-
-	choice := resp.Choices[0]
-
-	// Add assistant message to history
-	s.messages = append(s.messages, choice.Message)
-
-	// Stop spinner
-	s.ui.StopSpinner(spinner, "Response received")
-
-	// Handle response based on finish reason
-	if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
-		// Handle tool calls
-		return s.handleToolCalls(ctx, choice.Message.ToolCalls)
-	} else if choice.FinishReason == "stop" {
-		// Print assistant message for the final response
-		if choice.Message.Content != "" {
-			s.ui.PrintAssistantMessage(choice.Message.Content)
-		}
-		return nil
+	// Print result or error
+	if err != nil {
+		s.ui.PrintToolCall(toolName, args, "", err)
+		return fmt.Sprintf("Error executing %s: %s", toolName, err.Error()), nil
 	} else {
-		// Print assistant message for other finish reasons
-		if choice.Message.Content != "" {
-			s.ui.PrintAssistantMessage(choice.Message.Content)
-		}
-		return nil
+		s.ui.PrintToolCall(toolName, args, result, nil)
+		return result, nil
 	}
 }
 
@@ -427,9 +239,17 @@ func (s *Session) continueConversation(ctx context.Context) error {
 func getSystemPrompt(registry *tools.Registry) (string, error) {
 	toolsList := registry.GetAll()
 
+	platformInfo := platform.GetPlatformInfo()
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getting working directory: %w", err)
+	}
 	promptData := prompts.PromptData{
-		KnowsTools: len(toolsList) > 0,
-		Tools:      toolsList,
+		KnowsTools:       len(toolsList) > 0,
+		Tools:            toolsList,
+		Platform:         fmt.Sprintf("%s %s (%s)", platformInfo.Name, platformInfo.Version, platformInfo.Arch),
+		Date:             time.Now().Format("2006-01-02"),
+		WorkingDirectory: dir,
 	}
 
 	return prompts.RenderSystemPrompt(promptData)
@@ -521,10 +341,6 @@ func (s *Session) GetConversationSummary() (string, error) {
 	return s.SummarizeMessages()
 }
 
-// max returns the larger of x or y
-func max(x, y int) int {
-	if x > y {
-		return x
-	}
-	return y
+func (s *Session) handleMessage(message string) {
+	s.ui.PrintAssistantMessage(message)
 }

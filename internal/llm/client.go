@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,21 +14,23 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-// OpenAIClient provides a simple client for interacting with OpenAI API
-type OpenAIClient struct {
+// Client provides a simple client for interacting with OpenAI API
+type Client struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
+	logger     APILogger
 }
 
 // NewClient creates a new OpenAI API client
-func NewClient(baseURL, apiKey string) *OpenAIClient {
-	return &OpenAIClient{
+func NewClient(baseURL, apiKey string, logger APILogger) *Client {
+	return &Client{
 		baseURL: baseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
 		},
+		logger: logger,
 	}
 }
 
@@ -63,7 +64,7 @@ type Tool struct {
 // ChatCompletionRequest is the request structure for chat completions
 type ChatCompletionRequest struct {
 	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
+	Messages    []Message `json:"Messages"`
 	Tools       []Tool    `json:"tools,omitempty"`
 	Temperature float64   `json:"temperature,omitempty"`
 	MaxTokens   int       `json:"max_tokens,omitempty"`
@@ -96,14 +97,8 @@ type ChatCompletionResponse struct {
 	} `json:"usage"`
 }
 
-// CreateChatCompletion creates a chat completion
-func (c *OpenAIClient) CreateChatCompletion(req ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	// Call the context-aware version with a background context
-	return c.CreateChatCompletionWithContext(context.Background(), req)
-}
-
-// CreateChatCompletionWithContext creates a chat completion with context for cancellation
-func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
+// CreateChatCompletion creates a chat completion with context for cancellation
+func (c *Client) CreateChatCompletion(ctx context.Context, req ChatCompletionRequest) (*ChatCompletionResponse, error) {
 	reqBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling request: %w", err)
@@ -122,9 +117,16 @@ func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req 
 	if err != nil {
 		// Check if the error was caused by context cancellation
 		if ctx.Err() != nil {
+			if c.logger != nil {
+				c.logger.LogInteraction(req, nil, fmt.Errorf("request cancelled: %w", ctx.Err()))
+			}
 			return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
 		}
-		return nil, fmt.Errorf("sending request: %w", err)
+		err := fmt.Errorf("request error: %w", err)
+		if c.logger != nil {
+			c.logger.LogInteraction(req, nil, err)
+		}
+		return nil, err
 	}
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -135,7 +137,11 @@ func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req 
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		err := fmt.Errorf("reading response: %w", err)
+		if c.logger != nil {
+			c.logger.LogInteraction(req, nil, err)
+		}
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -146,7 +152,13 @@ func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req 
 			} `json:"error"`
 		}
 		if err := json.Unmarshal(body, &errResp); err == nil && errResp.Error.Message != "" {
+			if c.logger != nil {
+				c.logger.LogInteraction(req, nil, fmt.Errorf("API error: %s", errResp.Error.Message))
+			}
 			return nil, fmt.Errorf("API error: %s", errResp.Error.Message)
+		}
+		if c.logger != nil {
+			c.logger.LogInteraction(req, nil, fmt.Errorf("API error: %s", string(body)))
 		}
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -156,12 +168,10 @@ func (c *OpenAIClient) CreateChatCompletionWithContext(ctx context.Context, req 
 		return nil, fmt.Errorf("unmarshaling response: %w", err)
 	}
 
+	// Log the interaction
+	if c.logger != nil {
+		c.logger.LogInteraction(req, respData, nil)
+	}
+
 	return &respData, nil
 }
-
-// Error types
-var (
-	ErrInvalidAPIKey = errors.New("invalid API key")
-	ErrRateLimited   = errors.New("rate limited")
-	ErrServerError   = errors.New("server error")
-)

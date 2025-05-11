@@ -8,13 +8,16 @@ import (
 	"text/template"
 )
 
-//go:embed default.go.tmpl
+//go:embed default.md
 var DefaultPromptTemplate string
 
 // PromptData contains data to be injected into the prompt template
 type PromptData struct {
-	KnowsTools bool
-	Tools      []*tools.Tool
+	KnowsTools       bool
+	Tools            []*tools.Tool
+	WorkingDirectory string
+	Platform         string
+	Date             string
 }
 
 // RenderSystemPrompt renders a prompt template with the given data

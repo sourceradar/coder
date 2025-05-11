@@ -1,4 +1,4 @@
-package logger
+package llm
 
 import (
 	"encoding/json"
@@ -9,7 +9,11 @@ import (
 )
 
 // APILogger logs API requests and responses to a file
-type APILogger struct {
+type APILogger interface {
+	LogInteraction(req interface{}, resp interface{}, err error)
+}
+
+type FileLogger struct {
 	logFilePath string
 }
 
@@ -22,19 +26,19 @@ type LogEntry struct {
 }
 
 // NewAPILogger creates a new APILogger instance
-func NewAPILogger(configDir string) *APILogger {
+func NewAPILogger(configDir string) APILogger {
 	// Create config directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Warning: couldn't create config directory: %v\n", err)
 	}
 
-	return &APILogger{
+	return &FileLogger{
 		logFilePath: filepath.Join(configDir, "api_logs.jsonl"),
 	}
 }
 
 // LogInteraction logs an API request/response pair
-func (l *APILogger) LogInteraction(req interface{}, resp interface{}, err error) {
+func (l *FileLogger) LogInteraction(req interface{}, resp interface{}, err error) {
 	// Create log entry
 	logEntry := LogEntry{
 		Timestamp: time.Now().Format(time.RFC3339),

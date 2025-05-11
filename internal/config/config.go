@@ -16,9 +16,10 @@ type Config struct {
 
 // ProviderConfig holds provider-specific configuration
 type ProviderConfig struct {
-	Endpoint string `mapstructure:"endpoint"`
-	APIKey   string `mapstructure:"api_key"`
-	Model    string `mapstructure:"model"`
+	Endpoint  string `mapstructure:"endpoint"`
+	APIKey    string `mapstructure:"api_key"`
+	Model     string `mapstructure:"model"`
+	LiteModel string `mapstructure:"lite_model"`
 }
 
 // UIConfig holds UI-specific configuration
