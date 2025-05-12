@@ -103,8 +103,55 @@ func NewGrepTool() *Tool {
 	}
 }
 
+// isTextFile checks if a file is likely to be a text file
+func isTextFile(filePath string) bool {
+	// Skip binary file extensions
+	binaryExtensions := []string{
+		".bin", ".exe", ".dll", ".so", ".dylib", ".o", ".obj",
+		".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff",
+		".pdf", ".zip", ".tar", ".gz", ".7z", ".rar",
+		".mp3", ".mp4", ".avi", ".mov", ".flv", ".wav",
+		".class", ".jar", ".pyc", ".pyo", ".pyd",
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	for _, binExt := range binaryExtensions {
+		if ext == binExt {
+			return false
+		}
+	}
+
+	// Try to read a bit of the file to check if it's binary
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	// Read first 512 bytes to determine file type
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil {
+		return false
+	}
+
+	// Check if it contains null bytes (common in binary files)
+	for i := 0; i < n; i++ {
+		if buffer[i] == 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Helper function for grep tool
 func searchFile(filePath string, regex *regexp.Regexp) []map[string]interface{} {
+	// Only search text files
+	if !isTextFile(filePath) {
+		return nil
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil
@@ -115,10 +162,16 @@ func searchFile(filePath string, regex *regexp.Regexp) []map[string]interface{} 
 
 	for i, line := range lines {
 		if regex.MatchString(line) {
+			// Trim long lines and add ellipsis if needed
+			trimmedLine := line
+			if len(trimmedLine) > 1024 {
+				trimmedLine = trimmedLine[:1020] + "..."
+			}
+
 			matches = append(matches, map[string]interface{}{
 				"file":    filePath,
 				"line":    i + 1,
-				"content": line,
+				"content": trimmedLine,
 			})
 		}
 	}

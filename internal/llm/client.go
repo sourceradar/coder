@@ -64,7 +64,7 @@ type Tool struct {
 // ChatCompletionRequest is the request structure for chat completions
 type ChatCompletionRequest struct {
 	Model       string    `json:"model"`
-	Messages    []Message `json:"Messages"`
+	Messages    []Message `json:"messages"`
 	Tools       []Tool    `json:"tools,omitempty"`
 	Temperature float64   `json:"temperature,omitempty"`
 	MaxTokens   int       `json:"max_tokens,omitempty"`

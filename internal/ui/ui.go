@@ -27,10 +27,28 @@ func NewUI(cfg config.UIConfig, exitHandler func()) (*UI, error) {
 		pterm.DisableColor()
 	}
 
-	instance, err := readline.New("> ")
+	// Create history file path
+	configDir, err := getConfigDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config directory: %v", err)
+	}
+
+	historyFile := configDir + "/history"
+
+	// Configure readline with history support
+	rlConfig := &readline.Config{
+		Prompt:          "> ",
+		HistoryFile:     historyFile,
+		HistoryLimit:    1000,
+		InterruptPrompt: "^C",
+		EOFPrompt:       "exit",
+	}
+
+	instance, err := readline.NewEx(rlConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create readline instance: %v", err)
 	}
+
 	return &UI{
 		config:      cfg,
 		readline:    instance,
@@ -50,13 +68,21 @@ func (u *UI) ShowHeader() {
 	}
 }
 
-// getConfigDir gets the config directory path
+// getConfigDir gets the config directory path and ensures it exists
 func getConfigDir() (string, error) {
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
-		return "/tmp/coder", nil // Fallback
+		userConfigDir = "/tmp"
 	}
-	return userConfigDir + "/coder", nil
+
+	configDir := userConfigDir + "/coder"
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create config directory: %v", err)
+	}
+
+	return configDir, nil
 }
 
 // StartSpinner starts a spinner with the given text
@@ -186,6 +212,12 @@ func (u *UI) AskInput(prompt string) string {
 		pterm.Error.Println("Error reading input:", err)
 		return ""
 	}
+
+	// Add non-empty, non-command input to history
+	if text != "" && !strings.HasPrefix(text, "/") {
+		u.readline.SaveHistory(text)
+	}
+
 	return text
 }
 
