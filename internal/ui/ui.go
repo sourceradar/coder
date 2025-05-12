@@ -35,13 +35,14 @@ func NewUI(cfg config.UIConfig, exitHandler func()) (*UI, error) {
 
 	historyFile := configDir + "/history"
 
-	// Configure readline with history support
+	// Configure readline with history support and path completion
 	rlConfig := &readline.Config{
 		Prompt:          "> ",
 		HistoryFile:     historyFile,
 		HistoryLimit:    1000,
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
+		AutoComplete:    GetPathCompleter(),
 	}
 
 	instance, err := readline.NewEx(rlConfig)
@@ -118,7 +119,7 @@ func (u *UI) StopSpinnerFail(spinner *pterm.SpinnerPrinter, text string) {
 
 // PrintUserMessage prints a user message
 func (u *UI) PrintUserMessage(message string) {
-	pterm.FgGreen.Println("You: " + message)
+	pterm.FgLightGreen.Println("You: " + message)
 }
 
 // parseMarkdown processes basic markdown formatting
@@ -128,7 +129,7 @@ func parseMarkdown(text string) string {
 
 // PrintAssistantMessage prints an assistant message with markdown formatting
 func (u *UI) PrintAssistantMessage(message string) {
-	fmt.Print("Coder: ")
+	fmt.Print("$ ")
 	fmt.Println(parseMarkdown(message))
 }
 

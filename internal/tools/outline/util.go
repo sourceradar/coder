@@ -26,26 +26,6 @@ func findDocComment(node *sitter.Node, content []byte, language string) string {
 		if strings.Contains(nodeType, "comment") {
 			text := getNodeText(currentNode, content)
 			// Clean up the comment text based on language
-			switch language {
-			case "go":
-				text = strings.TrimPrefix(text, "//")
-				text = strings.TrimPrefix(text, "/*")
-				text = strings.TrimSuffix(text, "*/")
-			case "javascript", "typescript":
-				text = strings.TrimPrefix(text, "//")
-				text = strings.TrimPrefix(text, "/*")
-				text = strings.TrimSuffix(text, "*/")
-				// Handle JSDoc comments
-				text = strings.TrimPrefix(text, "*")
-			case "python":
-				text = strings.TrimPrefix(text, "#")
-				// Handle docstrings
-				text = strings.TrimPrefix(text, "\"\"\"")
-				text = strings.TrimSuffix(text, "\"\"\"")
-				text = strings.TrimPrefix(text, "'''")
-				text = strings.TrimSuffix(text, "'''")
-			}
-
 			text = strings.TrimSpace(text)
 			if comment == "" {
 				comment = text

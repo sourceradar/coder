@@ -14,7 +14,7 @@ import (
 func NewOutlineTool() *Tool {
 	return &Tool{
 		Name:        "outline",
-		Description: "Generate an outline of public symbols in a file",
+		Description: "Generate an outline of symbols in a file (both public and private)",
 		InputSchema: schema.Schema{
 			Type: "object",
 			Properties: map[string]schema.Property{

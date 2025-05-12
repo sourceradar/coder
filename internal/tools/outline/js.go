@@ -6,13 +6,6 @@ import (
 	"strings"
 )
 
-// Extract JavaScript symbols (for backwards compatibility)
-func extractJSSymbols(root *sitter.Node, content []byte) []SymbolInfo {
-	// Legacy function, kept for compatibility
-	var _ []SymbolInfo
-	return nil
-}
-
 // Extract JavaScript outline directly from the code
 func extractJSOutline(root *sitter.Node, content []byte) string {
 	var result strings.Builder
