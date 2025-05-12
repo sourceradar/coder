@@ -27,6 +27,15 @@ func NewGlobTool() *Tool {
 			},
 			Required: []string{"pattern"},
 		},
+		Explain: func(input map[string]any) string {
+			pattern, _ := input["pattern"].(string)
+			root, ok := input["root"].(string)
+			if !ok {
+				root = "."
+			}
+
+			return fmt.Sprintf("Will search for files matching pattern '%s' in directory '%s'", pattern, root)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			pattern := input["pattern"].(string)
 			root, ok := input["root"].(string)

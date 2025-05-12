@@ -64,7 +64,7 @@ func (u *UI) ShowHeader() {
 	// Show info about API logging
 	configDir, _ := getConfigDir()
 	if configDir != "" {
-		pterm.Info.Println("API requests and responses are being logged to: " + configDir + "/api_logs.jsonl")
+		pterm.Info.Println("API requests and responses are being logged to the logs directory: " + configDir + "/logs/")
 	}
 }
 
@@ -230,4 +230,20 @@ func (u *UI) AskMultiLineInput(prompt string) string {
 // ClearScreen clears the terminal screen
 func (u *UI) ClearScreen() {
 	pterm.DefaultArea.Clear()
+}
+
+func (u *UI) AskToolCallConfirmation(explanation string) (bool, string) {
+	pterm.DefaultBox.WithTitle("Confirm tool call").
+		Println(explanation)
+
+	confirmation, _ := pterm.DefaultInteractiveConfirm.
+		WithRejectText("No, and tell what to do instead").
+		WithDefaultText(explanation).
+		Show()
+
+	if confirmation {
+		return true, ""
+	}
+
+	return false, u.AskInput("What should I do instead?")
 }

@@ -9,6 +9,7 @@ type Tool struct {
 	Description string
 	InputSchema schema.Schema
 	Execute     func(input map[string]any) (string, error)
+	Explain     func(input map[string]any) string
 }
 
 func (t *Tool) Validate(input map[string]any) error {

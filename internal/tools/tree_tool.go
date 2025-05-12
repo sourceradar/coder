@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"fmt"
 	"github.com/recrsn/coder/internal/schema"
 	"os"
 	"path/filepath"
@@ -25,6 +26,11 @@ func NewTreeTool() *Tool {
 				},
 			},
 			Required: []string{"path"},
+		},
+		Explain: func(input map[string]any) string {
+			path, _ := input["path"].(string)
+			depth, _ := input["depth"].(int)
+			return fmt.Sprintf("Will display a tree view of the directory structure for '%s' %d levels deep", path, depth)
 		},
 		Execute: func(input map[string]any) (string, error) {
 			path := input["path"].(string)

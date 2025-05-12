@@ -37,7 +37,7 @@ func (s *Session) SummarizeMessages() (string, error) {
 	}
 
 	for _, msg := range s.agent.Messages {
-		if msg.Role == "system" || msg.Role == "tool" {
+		if msg.Role == "system" {
 			summaryPrompt = append(summaryPrompt, msg)
 		}
 	}

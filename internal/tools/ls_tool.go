@@ -27,6 +27,18 @@ func NewLSTool() *Tool {
 			},
 			Required: []string{"path"},
 		},
+		Explain: func(input map[string]any) string {
+			path, _ := input["path"].(string)
+			recursive, ok := input["recursive"].(bool)
+			if !ok {
+				recursive = false
+			}
+
+			if recursive {
+				return fmt.Sprintf("Will list all files and directories recursively in '%s'", path)
+			}
+			return fmt.Sprintf("Will list files and directories in '%s'", path)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			path := input["path"].(string)
 			recursive, ok := input["recursive"].(bool)

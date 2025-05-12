@@ -219,20 +219,25 @@ func (s *Session) handleToolCalls(ctx context.Context, toolName string, args map
 		return errorMsg, nil
 	}
 
-	// Execute the tool
-	fmt.Printf("Executing tool: %s\n", toolName)
+	execute, alternate := s.ui.AskToolCallConfirmation(tool.Explain(args))
 
-	// Execute the tool
-	result, err := tool.Run(args)
+	if execute {
+		result, err := tool.Run(args)
 
-	// Print result or error
-	if err != nil {
-		s.ui.PrintToolCall(toolName, args, "", err)
-		return fmt.Sprintf("Error executing %s: %s", toolName, err.Error()), nil
-	} else {
-		s.ui.PrintToolCall(toolName, args, result, nil)
-		return result, nil
+		// Print result or error
+		if err != nil {
+			s.ui.PrintToolCall(toolName, args, "", err)
+			return fmt.Sprintf("Error executing %s: %s", toolName, err.Error()), nil
+		} else {
+			s.ui.PrintToolCall(toolName, args, result, nil)
+			return result, nil
+		}
 	}
+
+	// If the user chooses not to execute, we can either return an alternate response
+	return "The user doesn't want to proceed with this tool use. " +
+		"The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file)." +
+		"STOP what you are doing and do this instead\n" + alternate, nil
 }
 
 // getSystemPrompt loads and renders the system prompt

@@ -21,6 +21,10 @@ func NewShellTool() *Tool {
 			},
 			Required: []string{"command"},
 		},
+		Explain: func(input map[string]any) string {
+			command, _ := input["command"].(string)
+			return fmt.Sprintf("Will execute shell command: '%s'", command)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			command := input["command"].(string)
 			cmd := exec.Command("sh", "-c", command)

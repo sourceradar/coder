@@ -26,6 +26,22 @@ func NewWriteTool() *Tool {
 			},
 			Required: []string{"path", "content"},
 		},
+		Explain: func(input map[string]any) string {
+			path, _ := input["path"].(string)
+			content, _ := input["content"].(string)
+
+			contentLength := len(content)
+			var contentDesc string
+			if contentLength == 0 {
+				contentDesc = "an empty file"
+			} else if contentLength == 1 {
+				contentDesc = "1 byte"
+			} else {
+				contentDesc = fmt.Sprintf("%d bytes", contentLength)
+			}
+
+			return fmt.Sprintf("Will write %s to '%s'", contentDesc, path)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			// Extract parameters
 			path, _ := input["path"].(string)

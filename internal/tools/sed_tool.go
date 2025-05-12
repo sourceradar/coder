@@ -35,6 +35,18 @@ func NewSedTool() *Tool {
 			},
 			Required: []string{"file", "pattern", "replacement"},
 		},
+		Explain: func(input map[string]any) string {
+			file, _ := input["file"].(string)
+			useRegex, ok := input["useRegex"].(bool)
+			if !ok {
+				useRegex = false
+			}
+
+			if useRegex {
+				return fmt.Sprintf("Will edit file '%s' using regex pattern matching to replace all occurrences", file)
+			}
+			return fmt.Sprintf("Will edit file '%s' by replacing all matching occurrences of text", file)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			file := input["file"].(string)
 			pattern := input["pattern"].(string)

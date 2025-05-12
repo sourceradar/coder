@@ -25,6 +25,10 @@ func NewOutlineTool() *Tool {
 			},
 			Required: []string{"file"},
 		},
+		Explain: func(input map[string]any) string {
+			filePath, _ := input["file"].(string)
+			return fmt.Sprintf("Will generate an outline showing the structure and symbols in '%s'", filePath)
+		},
 		Execute: func(input map[string]any) (string, error) {
 			filePath := input["file"].(string)
 
