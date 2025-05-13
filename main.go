@@ -5,6 +5,7 @@ import (
 	"github.com/recrsn/coder/internal/chat"
 	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/tools"
+	"github.com/recrsn/coder/internal/tools/lsp"
 	"github.com/recrsn/coder/internal/ui"
 	"os"
 )
@@ -28,9 +29,22 @@ func main() {
 	registry.Register("sed", tools.NewSedTool())
 	registry.Register("grep", tools.NewGrepTool())
 	registry.Register("write", tools.NewWriteTool())
+	registry.Register("read", tools.NewReadTool())
 	registry.Register("search_replace", tools.NewSearchReplaceTool())
 	registry.Register("tree", tools.NewTreeTool())
 	registry.Register("outline", tools.NewOutlineTool())
+
+	// Register LSP tools
+	lspManager, err := lsp.NewManager()
+	if err != nil {
+		fmt.Printf("Error initializing LSP manager: %v\n", err)
+		fmt.Println("LSP features may not work properly")
+	} else {
+		defer lspManager.StopAllServers() // Ensure all LSP servers are stopped on exit
+		registry.Register("lsp_definition", lsp.NewDefinitionTool(lspManager))
+		registry.Register("lsp_references", lsp.NewReferencesTool(lspManager))
+		registry.Register("lsp_callhierarchy", lsp.NewCallHierarchyTool(lspManager))
+	}
 
 	var session *chat.Session
 
