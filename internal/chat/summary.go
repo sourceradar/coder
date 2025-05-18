@@ -18,11 +18,6 @@ type MessageSummary struct {
 // SummarizeMessages generates a summary of previous messages in the conversation
 // focusing on extracting key points and condensing them into a concise summary.
 func (s *Session) SummarizeMessages() (string, error) {
-	// If there are not enough messages to summarize, return early
-	if len(s.agent.Messages) <= 1 { // Skip just the system message
-		return "", nil
-	}
-
 	// Create a context that can be cancelled
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -34,12 +29,6 @@ func (s *Session) SummarizeMessages() (string, error) {
 			Role:    "system",
 			Content: prompts.RenderSummaryPrompt(),
 		},
-	}
-
-	for _, msg := range s.agent.Messages {
-		if msg.Role == "system" {
-			summaryPrompt = append(summaryPrompt, msg)
-		}
 	}
 
 	// Add a final user message asking for the summary
@@ -75,7 +64,7 @@ func (s *Session) SummarizeMessages() (string, error) {
 	summary := resp.Choices[0].Message.Content
 	s.ui.StopSpinner(spinner, "Summary generated")
 
-	s.agent.ClearContext()
+	// Add the summary to the agent's context
 	s.agent.AddMessage("user", fmt.Sprintf(""+
 		"This session is being continued from a previous conversation."+
 		" The conversation is summarized below:"+
@@ -84,6 +73,9 @@ func (s *Session) SummarizeMessages() (string, error) {
 		"Continue with the last task that you were asked to work on.",
 		summary,
 	))
+
+	// Store the summary for future reference
+	s.conversationSummary = summary
 
 	return summary, nil
 }

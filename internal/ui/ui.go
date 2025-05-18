@@ -194,6 +194,11 @@ func (u *UI) PrintSuccess(message string) {
 	pterm.Success.Println(message)
 }
 
+// PrintInfo prints an informational message
+func (u *UI) PrintInfo(message string) {
+	pterm.Info.Println(message)
+}
+
 // AskInput asks for user input with a prompt
 func (u *UI) AskInput(prompt string) string {
 	u.readline.SetPrompt(prompt)

@@ -32,17 +32,17 @@ func NewAPILogger(configDir string) APILogger {
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Warning: couldn't create config directory: %v\n", err)
 	}
-	
+
 	// Create a logs directory inside the config directory
 	logsDir := filepath.Join(configDir, "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		fmt.Printf("Warning: couldn't create logs directory: %v\n", err)
 	}
-	
+
 	// Create a new log file with timestamp in the name
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 	logFileName := fmt.Sprintf("api_logs_%s.jsonl", timestamp)
-	
+
 	return &FileLogger{
 		logFilePath: filepath.Join(logsDir, logFileName),
 		configDir:   configDir,

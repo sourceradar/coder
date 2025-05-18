@@ -42,12 +42,12 @@ func GetDirectories(appName string) (*Directories, error) {
 		if appDataDir == "" {
 			appDataDir = filepath.Join(homeDir, "AppData", "Roaming")
 		}
-		
+
 		localAppDataDir := os.Getenv("LOCALAPPDATA")
 		if localAppDataDir == "" {
 			localAppDataDir = filepath.Join(homeDir, "AppData", "Local")
 		}
-		
+
 		dirs.Config = filepath.Join(appDataDir, appName)
 		dirs.Data = dirs.Config
 		dirs.Cache = filepath.Join(localAppDataDir, appName, "Cache")
@@ -59,17 +59,17 @@ func GetDirectories(appName string) (*Directories, error) {
 		if xdgConfigHome == "" {
 			xdgConfigHome = filepath.Join(homeDir, ".config")
 		}
-		
+
 		xdgDataHome := os.Getenv("XDG_DATA_HOME")
 		if xdgDataHome == "" {
 			xdgDataHome = filepath.Join(homeDir, ".local", "share")
 		}
-		
+
 		xdgCacheHome := os.Getenv("XDG_CACHE_HOME")
 		if xdgCacheHome == "" {
 			xdgCacheHome = filepath.Join(homeDir, ".cache")
 		}
-		
+
 		dirs.Config = filepath.Join(xdgConfigHome, appName)
 		dirs.Data = filepath.Join(xdgDataHome, appName)
 		dirs.Cache = filepath.Join(xdgCacheHome, appName)

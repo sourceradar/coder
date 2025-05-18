@@ -89,10 +89,10 @@ func NewServerManager() (*ServerManager, error) {
 	}
 
 	return &ServerManager{
-		configs:         make(map[string]ServerConfig),
-		servers:         make(map[string]*LanguageServer),
+		configs:          make(map[string]ServerConfig),
+		servers:          make(map[string]*LanguageServer),
 		installedServers: make(map[string]string),
-		directories:     dirs,
+		directories:      dirs,
 	}, nil
 }
 
@@ -101,8 +101,8 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 	// Define default configurations for common language servers
 	configs := map[string]ServerConfig{
 		"gopls": {
-			Command: "gopls",
-			Args:    []string{"serve", "-rpc.trace"},
+			Command:        "gopls",
+			Args:           []string{"serve", "-rpc.trace"},
 			FileExtensions: []string{".go"},
 			DownloadInfo: &DownloadInfo{
 				Dependencies: []*Dependency{
@@ -120,8 +120,8 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 			},
 		},
 		"typescript": {
-			Command: "typescript-language-server",
-			Args:    []string{"--stdio"},
+			Command:        "typescript-language-server",
+			Args:           []string{"--stdio"},
 			FileExtensions: []string{".ts", ".tsx", ".js", ".jsx"},
 			DownloadInfo: &DownloadInfo{
 				Dependencies: []*Dependency{
@@ -144,8 +144,8 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 			},
 		},
 		"pyright": {
-			Command: "pyright-langserver",
-			Args:    []string{"--stdio"},
+			Command:        "pyright-langserver",
+			Args:           []string{"--stdio"},
 			FileExtensions: []string{".py"},
 			DownloadInfo: &DownloadInfo{
 				Dependencies: []*Dependency{
@@ -168,7 +168,7 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 			},
 		},
 		"rust-analyzer": {
-			Command: "rust-analyzer",
+			Command:        "rust-analyzer",
 			FileExtensions: []string{".rs"},
 			DownloadInfo: &DownloadInfo{
 				Platforms: map[string]PlatformDownloadInfo{
@@ -201,7 +201,7 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 			},
 		},
 		"clangd": {
-			Command: "clangd",
+			Command:        "clangd",
 			FileExtensions: []string{".c", ".cpp", ".h", ".hpp"},
 			DownloadInfo: &DownloadInfo{
 				Platforms: map[string]PlatformDownloadInfo{
@@ -244,7 +244,7 @@ func (sm *ServerManager) LoadDefaultConfigs() error {
 func (sm *ServerManager) GetConfigForLanguage(language string) (ServerConfig, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	
+
 	config, exists := sm.configs[language]
 	return config, exists
 }

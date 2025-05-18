@@ -59,7 +59,7 @@ func (d *Downloader) DownloadAndInstallServer(language string) (string, error) {
 	}
 
 	platformKey := GetPlatformKey()
-	
+
 	// Check if there's a platform-specific setup or a generic one
 	platformInfo, hasPlatformInfo := config.DownloadInfo.Platforms[platformKey]
 	if !hasPlatformInfo {
@@ -75,12 +75,12 @@ func (d *Downloader) DownloadAndInstallServer(language string) (string, error) {
 	// If setup commands are provided, execute them
 	if len(platformInfo.Setup) > 0 {
 		spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Setting up %s language server...", language))
-		
+
 		if err := d.runSetupCommands(platformInfo.Setup, installDir); err != nil {
 			spinner.Fail(fmt.Sprintf("Failed to set up %s: %v", language, err))
 			return "", fmt.Errorf("setup failed: %w", err)
 		}
-		
+
 		spinner.Success(fmt.Sprintf("%s language server set up successfully", language))
 
 		// Assume the command is in the PATH if no binary path is specified
@@ -102,14 +102,14 @@ func (d *Downloader) DownloadAndInstallServer(language string) (string, error) {
 		}
 
 		binaryPath = filepath.Join(installDir, platformInfo.Binary)
-		
+
 		// Make the binary executable on Unix systems
 		if runtime.GOOS != "windows" {
 			if err := os.Chmod(binaryPath, 0755); err != nil {
 				return "", fmt.Errorf("failed to make binary executable: %w", err)
 			}
 		}
-		
+
 		pterm.Success.Println(fmt.Sprintf("%s language server installed successfully", language))
 	} else {
 		return "", fmt.Errorf("no setup commands or download URL provided")
@@ -213,7 +213,7 @@ func (d *Downloader) downloadAndExtract(language, url, archiveType, destDir stri
 
 	// Show extracting message
 	spinner, _ := pterm.DefaultSpinner.Start(fmt.Sprintf("Extracting %s archive...", archiveType))
-	
+
 	// Extract based on archive type
 	var extractErr error
 	switch archiveType {

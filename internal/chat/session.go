@@ -33,7 +33,7 @@ type Session struct {
 }
 
 // NewSession creates a new chat session
-func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry) (*Session, error) {
+func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry, client *llm.Client) (*Session, error) {
 	// Set up history file in config directory
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
@@ -44,21 +44,10 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registr
 
 	apiLogger := llm.NewAPILogger(configDir)
 
-	// Create OpenAI client
-	client := llm.NewClient(cfg.Provider.Endpoint, cfg.Provider.APIKey, apiLogger)
-
-	// Load and render system prompt
-	systemPrompt, err := getSystemPrompt(registry)
-	if err != nil {
-		return nil, fmt.Errorf("getting system prompt: %w", err)
-	}
-
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Warning: couldn't create config directory: %v\n", err)
 	}
-
-	// Initialize API logger
 
 	session := &Session{
 		ui:                  userInterface,
@@ -70,21 +59,6 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registr
 		apiLogger:           apiLogger,
 		conversationSummary: "",
 	}
-
-	agent := llm.NewAgent(
-		"Coder",
-		systemPrompt,
-		registry.ListTools(),
-		llm.ModelConfig{
-			Model:       cfg.Provider.Model,
-			Temperature: 0.6,
-		},
-		client,
-		session.handleToolCalls,
-		session.handleMessage,
-	)
-
-	session.agent = agent
 
 	return session, nil
 }
@@ -203,8 +177,8 @@ func (s *Session) processUserMessage() error {
 	return err
 }
 
-// handleToolCalls processes tool calls from the LLM
-func (s *Session) handleToolCalls(ctx context.Context, toolName string, args map[string]any) (string, error) {
+// HandleToolCalls processes tool calls from the LLM
+func (s *Session) HandleToolCalls(ctx context.Context, toolName string, args map[string]any) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", fmt.Errorf("tool execution interrupted")
@@ -240,8 +214,8 @@ func (s *Session) handleToolCalls(ctx context.Context, toolName string, args map
 		"STOP what you are doing and do this instead\n" + alternate, nil
 }
 
-// getSystemPrompt loads and renders the system prompt
-func getSystemPrompt(registry *tools.Registry) (string, error) {
+// GetSystemPrompt loads and renders the system prompt
+func GetSystemPrompt(registry *tools.Registry) (string, error) {
 	toolsList := registry.GetAll()
 
 	platformInfo := platform.GetPlatformInfo()
@@ -334,6 +308,11 @@ func (s *Session) Exit() {
 	os.Exit(0)
 }
 
+// GetClient returns the LLM client for external use
+func (s *Session) GetClient() *llm.Client {
+	return s.client
+}
+
 // GetConversationSummary returns the current conversation summary
 // If no summary exists or it's outdated, it generates a new one
 func (s *Session) GetConversationSummary() (string, error) {
@@ -346,6 +325,12 @@ func (s *Session) GetConversationSummary() (string, error) {
 	return s.SummarizeMessages()
 }
 
-func (s *Session) handleMessage(message string) {
+// HandleMessage handles messages from the agent
+func (s *Session) HandleMessage(message string) {
 	s.ui.PrintAssistantMessage(message)
+}
+
+// SetAgent sets the agent for this session
+func (s *Session) SetAgent(agent *llm.Agent) {
+	s.agent = agent
 }
