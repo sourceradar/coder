@@ -18,12 +18,20 @@ func NewShellTool() *Tool {
 					Type:        "string",
 					Description: "The shell command to execute",
 				},
+				"why": {
+					Type:        "string",
+					Description: "A very short reason for executing this command",
+				},
 			},
 			Required: []string{"command"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			command, _ := input["command"].(string)
-			return fmt.Sprintf("Will execute shell command: '%s'", command)
+			why, _ := input["why"].(string)
+			return ExplainResult{
+				Title:   fmt.Sprintf("Shell(%s)", command),
+				Context: why,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			command := input["command"].(string)

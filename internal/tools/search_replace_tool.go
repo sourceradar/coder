@@ -31,9 +31,18 @@ func NewSearchReplaceTool() *Tool {
 			},
 			Required: []string{"file", "search", "replacement"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			file, _ := input["file"].(string)
-			return fmt.Sprintf("Will edit file '%s' by replacing one occurrence of the search text with the replacement text", file)
+			search, _ := input["search"].(string)
+			replacement, _ := input["replacement"].(string)
+
+			title := fmt.Sprintf("SearchReplace(%s, %s, %s)", file, search, replacement)
+			content := fmt.Sprintf("Will edit file '%s' by replacing one occurrence of the search text with the replacement text", file)
+
+			return ExplainResult{
+				Title:   title,
+				Context: content,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			file := input["file"].(string)

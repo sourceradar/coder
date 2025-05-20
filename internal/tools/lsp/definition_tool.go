@@ -33,13 +33,19 @@ func NewDefinitionTool(manager *lsp.Manager) *tools.Tool {
 			},
 			Required: []string{"file_path", "line", "character"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) tools.ExplainResult {
 			filePath, _ := input["file_path"].(string)
 			line, _ := input["line"].(float64)
 			character, _ := input["character"].(float64)
 
-			return fmt.Sprintf("Will find the definition of the symbol at %s:%d:%d",
+			title := fmt.Sprintf("Definition(%s:%d:%d)", filePath, int(line), int(character))
+			content := fmt.Sprintf("Will find the definition of the symbol at %s:%d:%d",
 				filePath, int(line), int(character))
+
+			return tools.ExplainResult{
+				Title:   title,
+				Context: content,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			// Extract parameters

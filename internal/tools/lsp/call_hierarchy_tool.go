@@ -38,16 +38,20 @@ func NewCallHierarchyTool(manager *lsp.Manager) *tools.Tool {
 			},
 			Required: []string{"file_path", "line", "character", "direction"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) tools.ExplainResult {
 			filePath, _ := input["file_path"].(string)
 			line, _ := input["line"].(float64)
 			character, _ := input["character"].(float64)
 			direction, _ := input["direction"].(string)
 
-			explanation := fmt.Sprintf("Will explore %s calls for the function or method at %s:%d:%d",
+			title := fmt.Sprintf("CallHierarchy(%s, %s)", filePath, direction)
+			content := fmt.Sprintf("Will explore %s calls for the function or method at %s:%d:%d",
 				direction, filePath, int(line), int(character))
 
-			return explanation
+			return tools.ExplainResult{
+				Title:   title,
+				Context: content,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			// Extract parameters

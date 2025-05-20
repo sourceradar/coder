@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/recrsn/coder/internal/chat/prompts"
+	"github.com/recrsn/coder/internal/common"
 	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/llm"
 	"github.com/recrsn/coder/internal/platform"
@@ -18,22 +19,21 @@ import (
 
 // Session represents a chat session
 type Session struct {
-	ui          *ui.UI
-	config      config.Config
-	registry    *tools.Registry
-	agent       *llm.Agent
-	client      *llm.Client
-	history     []string
-	historyFile string
-	apiLogger   llm.APILogger
+	ui                *ui.UI
+	config            config.Config
+	registry          *tools.Registry
+	agent             *llm.Agent
+	client            *llm.Client
+	history           []string
+	historyFile       string
+	apiLogger         llm.APILogger
+	permissionManager *common.PermissionManager
 	// For cancellation
 	cancelFunc context.CancelFunc
-	// Stores the most recent summary of conversation
-	conversationSummary string
 }
 
 // NewSession creates a new chat session
-func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry, client *llm.Client) (*Session, error) {
+func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry, client *llm.Client, permissionManager *common.PermissionManager) (*Session, error) {
 	// Set up history file in config directory
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
@@ -50,14 +50,14 @@ func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registr
 	}
 
 	session := &Session{
-		ui:                  userInterface,
-		config:              cfg,
-		registry:            registry,
-		client:              client,
-		history:             []string{},
-		historyFile:         historyFile,
-		apiLogger:           apiLogger,
-		conversationSummary: "",
+		ui:                userInterface,
+		config:            cfg,
+		registry:          registry,
+		client:            client,
+		history:           []string{},
+		historyFile:       historyFile,
+		apiLogger:         apiLogger,
+		permissionManager: permissionManager,
 	}
 
 	return session, nil
@@ -193,7 +193,18 @@ func (s *Session) HandleToolCalls(ctx context.Context, toolName string, args map
 		return errorMsg, nil
 	}
 
-	execute, alternate := s.ui.AskToolCallConfirmation(tool.Explain(args))
+	// Create permission request
+	result := tool.Explain(args)
+	request := common.PermissionRequest{
+		ToolName:  toolName,
+		Arguments: args,
+		Title:     result.Title,
+		Context:   result.Context,
+	}
+
+	response := s.permissionManager.RequestPermission(request)
+	execute := response.Granted
+	alternate := response.AlternateAction
 
 	if execute {
 		result, err := tool.Run(args)
@@ -306,23 +317,6 @@ func (s *Session) Exit() {
 	s.ui.PrintSuccess("Goodbye!")
 	s.saveHistory()
 	os.Exit(0)
-}
-
-// GetClient returns the LLM client for external use
-func (s *Session) GetClient() *llm.Client {
-	return s.client
-}
-
-// GetConversationSummary returns the current conversation summary
-// If no summary exists or it's outdated, it generates a new one
-func (s *Session) GetConversationSummary() (string, error) {
-	// If we already have a summary, return it
-	if s.conversationSummary != "" {
-		return s.conversationSummary, nil
-	}
-
-	// Otherwise, generate a new summary
-	return s.SummarizeMessages()
 }
 
 // HandleMessage handles messages from the agent

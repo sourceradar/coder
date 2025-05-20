@@ -18,6 +18,7 @@ type PromptData struct {
 	WorkingDirectory string
 	Platform         string
 	Date             string
+	Instructions     string
 }
 
 // RenderSystemPrompt renders a prompt template with the given data

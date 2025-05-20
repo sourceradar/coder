@@ -3,8 +3,10 @@ package tools
 import (
 	"fmt"
 	"github.com/recrsn/coder/internal/schema"
+	"github.com/sergi/go-diff/diffmatchpatch"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // NewWriteTool creates a new tool for writing files
@@ -26,7 +28,7 @@ func NewWriteTool() *Tool {
 			},
 			Required: []string{"path", "content"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			path, _ := input["path"].(string)
 			content, _ := input["content"].(string)
 
@@ -40,7 +42,25 @@ func NewWriteTool() *Tool {
 				contentDesc = fmt.Sprintf("%d bytes", contentLength)
 			}
 
-			return fmt.Sprintf("Will write %s to '%s'", contentDesc, path)
+			title := fmt.Sprintf("Write(%s)", path)
+
+			// Try to read the current file content for diff
+			var explainContent string
+			existingContent, err := os.ReadFile(path)
+			if err == nil {
+				diffText := generatePrettyDiff(string(existingContent), content)
+				explainContent = fmt.Sprintf("Will write %s to '%s'\n\nDiff:\n```diff\n%s\n```",
+					contentDesc, path, diffText)
+			} else {
+				// If file doesn't exist or can't be read, just show the new content
+				explainContent = fmt.Sprintf("Will write %s to '%s'\n\nNew content:\n```\n%s\n```",
+					contentDesc, path, content)
+			}
+
+			return ExplainResult{
+				Title:   title,
+				Context: explainContent,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			// Extract parameters
@@ -61,4 +81,26 @@ func NewWriteTool() *Tool {
 			return fmt.Sprintf("File written to %s (%d bytes)", path, len(content)), nil
 		},
 	}
+}
+
+// generatePrettyDiff creates a colorized diff using the go-diff library
+func generatePrettyDiff(oldText, newText string) string {
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(oldText, newText, true)
+
+	// Create a string builder to hold the diff output
+	var diffOutput strings.Builder
+	for _, d := range diffs {
+		switch d.Type {
+		case diffmatchpatch.DiffEqual:
+			diffOutput.WriteString(d.Text)
+		case diffmatchpatch.DiffInsert:
+			diffOutput.WriteString(fmt.Sprintf("\x1b[32m%s\x1b[0m", d.Text)) // Green for insertions
+		case diffmatchpatch.DiffDelete:
+			diffOutput.WriteString(fmt.Sprintf("\x1b[31m%s\x1b[0m", d.Text)) // Red for deletions
+		}
+		diffOutput.WriteString("\n")
+	}
+
+	return diffOutput.String()
 }

@@ -166,3 +166,10 @@ func (a *Agent) handleToolCalls(ctx context.Context, toolCalls []ToolCall) error
 
 	return nil
 }
+
+func (a *Agent) Clone() *Agent {
+	clone := *a
+	clone.Messages = make([]Message, len(a.Messages))
+	copy(clone.Messages, a.Messages)
+	return &clone
+}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"github.com/recrsn/coder/internal/common"
 	"github.com/recrsn/coder/internal/llm"
 	"github.com/recrsn/coder/internal/schema"
 	"github.com/recrsn/coder/internal/ui"
@@ -10,7 +11,7 @@ import (
 )
 
 // NewAgentTool creates a tool that launches an interactive agent with read-only tools
-func NewAgentTool(registry *Registry, client *llm.Client, userInterface *ui.UI, modelName string) *Tool {
+func NewAgentTool(registry *Registry, client *llm.Client, userInterface *ui.UI, modelName string, permissionManager *common.PermissionManager) *Tool {
 	inputSchema := schema.Schema{
 		Type: "object",
 		Properties: map[string]schema.Property{
@@ -27,12 +28,17 @@ func NewAgentTool(registry *Registry, client *llm.Client, userInterface *ui.UI, 
 	}
 
 	return &Tool{
-		Name:        "agent",
-		Description: "Launch a new agent that can analyze code by using read-only tools. Agent cannot use any write tools or receive input from the user. It can only send a response back to the caller. Show agent dialogs and tool calls as well like we do for chat",
+		Name: "agent",
+		Description: "Launch a new agent that can analyze code by using read-only tools." +
+			" Agent cannot use any write tools or receive input from the user." +
+			" It can only send a response back to the caller.",
 		InputSchema: inputSchema,
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			description, _ := input["description"].(string)
-			return fmt.Sprintf("Launch an agent to perform task: %s", description)
+			return ExplainResult{
+				Title:   fmt.Sprintf("Agent(%s)", description),
+				Context: fmt.Sprintf("Launch an agent to perform task: %s", description),
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			prompt, _ := input["prompt"].(string)
@@ -95,9 +101,17 @@ Show your work by explaining how you arrived at your conclusions.`
 						return errorMsg, nil
 					}
 
-					// Display the tool explanation (instead of confirmation)
-					explanation := tool.Explain(args)
-					userInterface.PrintInfo(fmt.Sprintf("Agent using tool: %s", explanation))
+					var detail = tool.Explain(args)
+					request := common.PermissionRequest{
+						ToolName:  toolName,
+						Arguments: args,
+						Title:     detail.Title,
+						Context:   detail.Context,
+					}
+
+					response := permissionManager.RequestPermission(request)
+					execute := response.Granted
+					alternate := response.AlternateAction
 
 					outputBuilder.WriteString(fmt.Sprintf("### Tool Call: %s\n", toolName))
 					outputBuilder.WriteString("```\n")
@@ -105,6 +119,13 @@ Show your work by explaining how you arrived at your conclusions.`
 						outputBuilder.WriteString(fmt.Sprintf("%s: %v\n", k, v))
 					}
 					outputBuilder.WriteString("```\n\n")
+
+					// If denied, return alternate instructions
+					if !execute {
+						errorMsg := "Permission denied by user"
+						outputBuilder.WriteString(fmt.Sprintf("Error: %s\n\n", errorMsg))
+						return fmt.Sprintf("Tool use denied by user. %s", alternate), nil
+					}
 
 					// Execute the tool
 					result, err := tool.Run(args)

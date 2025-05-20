@@ -253,3 +253,20 @@ func (u *UI) AskToolCallConfirmation(explanation string) (bool, string) {
 
 	return false, u.AskInput("What should I do instead?")
 }
+
+// AskPermission asks the user for permission with a title and context
+func (u *UI) AskPermission(explanation string) (bool, string) {
+	pterm.DefaultBox.WithTitle("Permission Request").
+		Println(explanation)
+
+	confirmation, _ := pterm.DefaultInteractiveConfirm.
+		WithConfirmText("Yes, allow this action").
+		WithRejectText("No, deny this action").
+		Show()
+
+	if confirmation {
+		return true, ""
+	}
+
+	return false, u.AskInput("What should I do instead?")
+}

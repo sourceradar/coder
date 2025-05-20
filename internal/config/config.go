@@ -10,8 +10,9 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Provider ProviderConfig `mapstructure:"provider"`
-	UI       UIConfig       `mapstructure:"ui"`
+	Provider    ProviderConfig   `mapstructure:"provider"`
+	UI          UIConfig         `mapstructure:"ui"`
+	Permissions PermissionConfig `mapstructure:"permissions"`
 }
 
 // ProviderConfig holds provider-specific configuration
@@ -79,6 +80,11 @@ func SaveConfig(config Config) error {
 
 	viper.Set("ui.color_enabled", config.UI.ColorEnabled)
 	viper.Set("ui.show_spinner", config.UI.ShowSpinner)
+
+	// Save permission settings
+	for tool, autoApprove := range config.Permissions.AutoApprove {
+		viper.Set(fmt.Sprintf("permissions.auto_approve.%s", tool), autoApprove)
+	}
 
 	return viper.WriteConfig()
 }

@@ -36,7 +36,7 @@ func NewGrepTool() *Tool {
 			},
 			Required: []string{"pattern", "paths"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			pattern, _ := input["pattern"].(string)
 			pathsAny, _ := input["paths"].([]interface{})
 			recursive, ok := input["recursive"].(bool)
@@ -54,8 +54,11 @@ func NewGrepTool() *Tool {
 				recursiveText = " recursively"
 			}
 
-			return fmt.Sprintf("Will search for pattern '%s' in %d path(s)%s: %s",
-				pattern, len(paths), recursiveText, strings.Join(paths, ", "))
+			return ExplainResult{
+				Title: fmt.Sprintf("Grep(%s, %s)", pattern, recursiveText),
+				Context: fmt.Sprintf("Will search for pattern '%s' in %d path(s)%s: %s",
+					pattern, len(paths), recursiveText, strings.Join(paths, ", ")),
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			pattern := input["pattern"].(string)

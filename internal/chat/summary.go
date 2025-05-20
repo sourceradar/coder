@@ -73,9 +73,5 @@ func (s *Session) SummarizeMessages() (string, error) {
 		"Continue with the last task that you were asked to work on.",
 		summary,
 	))
-
-	// Store the summary for future reference
-	s.conversationSummary = summary
-
 	return summary, nil
 }

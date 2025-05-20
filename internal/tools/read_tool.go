@@ -31,19 +31,32 @@ func NewReadTool() *Tool {
 			},
 			Required: []string{"path"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			path, _ := input["path"].(string)
 			start, hasStart := input["start"].(float64)
 			end, hasEnd := input["end"].(float64)
 
+			var title string
+			var content string
+
 			if hasStart && hasEnd {
-				return fmt.Sprintf("Will read lines %d to %d from '%s'", int(start), int(end), path)
+				title = fmt.Sprintf("Read(%s, %d-%d)", path, int(start), int(end))
+				content = fmt.Sprintf("Will read lines %d to %d from '%s'", int(start), int(end), path)
 			} else if hasStart {
-				return fmt.Sprintf("Will read from line %d to the end of '%s'", int(start), path)
+				title = fmt.Sprintf("Read(%s, %d+)", path, int(start))
+				content = fmt.Sprintf("Will read from line %d to the end of '%s'", int(start), path)
 			} else if hasEnd {
-				return fmt.Sprintf("Will read from the beginning to line %d of '%s'", int(end), path)
+				title = fmt.Sprintf("Read(%s, 1-%d)", path, int(end))
+				content = fmt.Sprintf("Will read from the beginning to line %d of '%s'", int(end), path)
+			} else {
+				title = fmt.Sprintf("Read(%s)", path)
+				content = fmt.Sprintf("Will read the entire contents of '%s'", path)
 			}
-			return fmt.Sprintf("Will read the entire contents of '%s'", path)
+
+			return ExplainResult{
+				Title:   title,
+				Context: content,
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			// Extract parameters

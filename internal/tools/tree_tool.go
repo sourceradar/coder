@@ -27,10 +27,13 @@ func NewTreeTool() *Tool {
 			},
 			Required: []string{"path"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			path, _ := input["path"].(string)
 			depth, _ := input["depth"].(int)
-			return fmt.Sprintf("Will display a tree view of the directory structure for '%s' %d levels deep", path, depth)
+			return ExplainResult{
+				Title:   fmt.Sprintf("Tree(%s, %d)", path, depth),
+				Context: fmt.Sprintf("Will display a tree view of the directory structure for '%s' %d levels deep", path, depth),
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			path := input["path"].(string)

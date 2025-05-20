@@ -27,14 +27,17 @@ func NewGlobTool() *Tool {
 			},
 			Required: []string{"pattern"},
 		},
-		Explain: func(input map[string]any) string {
+		Explain: func(input map[string]any) ExplainResult {
 			pattern, _ := input["pattern"].(string)
 			root, ok := input["root"].(string)
 			if !ok {
 				root = "."
 			}
 
-			return fmt.Sprintf("Will search for files matching pattern '%s' in directory '%s'", pattern, root)
+			return ExplainResult{
+				Title:   fmt.Sprintf("Glob(%s, %s)", pattern, root),
+				Context: fmt.Sprintf("Will search for files matching the pattern '%s' in directory '%s'", pattern, root),
+			}
 		},
 		Execute: func(input map[string]any) (string, error) {
 			pattern := input["pattern"].(string)

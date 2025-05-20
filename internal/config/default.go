@@ -12,5 +12,6 @@ func DefaultConfig() Config {
 			ColorEnabled: true,
 			ShowSpinner:  true,
 		},
+		Permissions: DefaultPermissionConfig(),
 	}
 }

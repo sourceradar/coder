@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/recrsn/coder/internal/chat"
 	"github.com/recrsn/coder/internal/chat/prompts"
+	"github.com/recrsn/coder/internal/common"
 	"github.com/recrsn/coder/internal/config"
 	"github.com/recrsn/coder/internal/llm"
 	"github.com/recrsn/coder/internal/lsp"
@@ -64,6 +65,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the UI permission handler
+	uiPermissionHandler := ui.NewUIPermissionHandler(userInterface)
+
+	// Create the permission manager
+	permissionManager := common.NewPermissionManager(cfg.Permissions, uiPermissionHandler)
+
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
 		userConfigDir = "/tmp" // Fallback
@@ -87,12 +94,16 @@ func main() {
 
 	// Prepare a system prompt
 	platformInfo := platform.GetPlatformInfo()
+	// Get agent instructions from AGENT.md or AGENTS.md if they exist
+	agentInstructions := prompts.GetAgentInstructions(workingDir)
+
 	promptData := prompts.PromptData{
 		KnowsTools:       len(registry.GetAll()) > 0,
 		Tools:            registry.GetAll(),
 		Platform:         fmt.Sprintf("%s %s (%s)", platformInfo.Name, platformInfo.Version, platformInfo.Arch),
 		Date:             time.Now().Format("2006-01-02"),
 		WorkingDirectory: workingDir,
+		Instructions:     agentInstructions,
 	}
 
 	systemPrompt, err := prompts.RenderSystemPrompt(promptData)
@@ -101,8 +112,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create a session instance
-	session, err = chat.NewSession(userInterface, cfg, registry, client)
+	// Create a session instance with permission manager
+	session, err = chat.NewSession(userInterface, cfg, registry, client, permissionManager)
 	if err != nil {
 		fmt.Printf("Error creating chat session: %v\n", err)
 		os.Exit(1)
@@ -126,7 +137,7 @@ func main() {
 	session.SetAgent(agent)
 
 	// Register agent tool with the same client
-	registry.Register("agent", tools.NewAgentTool(registry, client, userInterface, cfg.Provider.Model))
+	registry.Register("agent", tools.NewAgentTool(registry, client, userInterface, cfg.Provider.Model, permissionManager))
 
 	if err := session.Start(); err != nil {
 		fmt.Printf("Error in chat session: %v\n", err)
