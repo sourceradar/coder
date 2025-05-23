@@ -7,11 +7,11 @@ import (
 
 // UIPermissionHandler implements the PermissionHandler interface for the terminal UI
 type UIPermissionHandler struct {
-	ui *UI
+	ui UserInterface
 }
 
 // NewUIPermissionHandler creates a new UI permission handler
-func NewUIPermissionHandler(ui *UI) *UIPermissionHandler {
+func NewUIPermissionHandler(ui UserInterface) *UIPermissionHandler {
 	return &UIPermissionHandler{
 		ui: ui,
 	}

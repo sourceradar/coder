@@ -27,6 +27,7 @@ type ProviderConfig struct {
 type UIConfig struct {
 	ColorEnabled bool `mapstructure:"color_enabled"`
 	ShowSpinner  bool `mapstructure:"show_spinner"`
+	UseBubbleTea bool `mapstructure:"use_bubble_tea"`
 }
 
 // LoadConfig loads the configuration from file
@@ -80,6 +81,7 @@ func SaveConfig(config Config) error {
 
 	viper.Set("ui.color_enabled", config.UI.ColorEnabled)
 	viper.Set("ui.show_spinner", config.UI.ShowSpinner)
+	viper.Set("ui.use_bubble_tea", config.UI.UseBubbleTea)
 
 	// Save permission settings
 	for tool, autoApprove := range config.Permissions.AutoApprove {

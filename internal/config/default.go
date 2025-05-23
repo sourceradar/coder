@@ -11,6 +11,7 @@ func DefaultConfig() Config {
 		UI: UIConfig{
 			ColorEnabled: true,
 			ShowSpinner:  true,
+			UseBubbleTea: true,
 		},
 		Permissions: DefaultPermissionConfig(),
 	}

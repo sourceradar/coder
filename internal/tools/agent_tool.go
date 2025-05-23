@@ -11,7 +11,7 @@ import (
 )
 
 // NewAgentTool creates a tool that launches an interactive agent with read-only tools
-func NewAgentTool(registry *Registry, client *llm.Client, userInterface *ui.UI, modelName string, permissionManager *common.PermissionManager) *Tool {
+func NewAgentTool(registry *Registry, client *llm.Client, userInterface ui.UserInterface, modelName string, permissionManager *common.PermissionManager) *Tool {
 	inputSchema := schema.Schema{
 		Type: "object",
 		Properties: map[string]schema.Property{

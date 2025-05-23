@@ -19,7 +19,7 @@ import (
 
 // Session represents a chat session
 type Session struct {
-	ui                *ui.UI
+	ui                ui.UserInterface
 	config            config.Config
 	registry          *tools.Registry
 	agent             *llm.Agent
@@ -33,7 +33,7 @@ type Session struct {
 }
 
 // NewSession creates a new chat session
-func NewSession(userInterface *ui.UI, cfg config.Config, registry *tools.Registry, client *llm.Client, permissionManager *common.PermissionManager) (*Session, error) {
+func NewSession(userInterface ui.UserInterface, cfg config.Config, registry *tools.Registry, client *llm.Client, permissionManager *common.PermissionManager) (*Session, error) {
 	// Set up history file in config directory
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
